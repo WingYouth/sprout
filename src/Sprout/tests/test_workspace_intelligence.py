@@ -256,6 +256,33 @@ def test_workspace_analysis_cache_round_trip() -> None:
     asyncio.run(run())
 
 
+def test_scanner_plans_commands_from_real_project_manifests(tmp_path: Path) -> None:
+    root = tmp_path / "mixed"
+    frontend = root / "web" / "frontend"
+    frontend.mkdir(parents=True)
+    (frontend / "package.json").write_text(
+        '{"scripts":{"build":"vite build"}}', encoding="utf-8"
+    )
+    (root / "build.gradle").write_text("plugins {}\n", encoding="utf-8")
+    (root / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.16)\nproject(sample)\n",
+        encoding="utf-8",
+    )
+
+    scanner = WorkspaceScanner()
+
+    assert scanner._test_commands({"node"}, root) == ()
+    assert scanner._build_commands({"node"}, root) == (
+        "npm --prefix web/frontend run build",
+    )
+    assert scanner._test_commands({"java"}, root) == ("gradle test",)
+    assert scanner._build_commands({"java"}, root) == ("gradle build",)
+    assert scanner._build_commands({"c-cpp"}, root) == (
+        "cmake -S . -B build",
+        "cmake --build build",
+    )
+
+
 def test_context_builder_injects_structured_workspace(tmp_path: Path) -> None:
     root = _project(tmp_path)
     intelligence = WorkspaceIntelligence(

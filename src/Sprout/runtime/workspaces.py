@@ -108,14 +108,16 @@ class WorkspaceService:
         return manifest
 
     async def read_plan(self, task_id: str) -> ReadPlan:
-        """Build the read plan for a task, scanning its workspace first."""
+        """Build the read plan from the persisted manifest, scanning if absent."""
         task = await self._metadata.get_task(task_id)
         if task is None:
             raise LookupError(f"Task not found: {task_id}")
         workspace = await self.get(task.workspace_id)
         if workspace is None:
             raise LookupError(f"Workspace not found: {task.workspace_id}")
-        manifest = await self.scan(workspace.id)
+        manifest = workspace.manifest
+        if manifest is None:
+            manifest = await self.scan(workspace.id)
         return self._scanner.build_read_plan(
             Workspace(
                 id=workspace.id,

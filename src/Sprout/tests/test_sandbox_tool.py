@@ -9,6 +9,7 @@ from Sprout.execution.file_broker import FileBroker
 from Sprout.execution.models import SandboxRef
 from Sprout.execution.sandbox_tool import (
     SandboxApplyPatchTool,
+    SandboxDeleteTool,
     SandboxEditTool,
     SandboxListTool,
     SandboxReadTool,
@@ -186,6 +187,44 @@ def test_sandbox_apply_patch_tool_deletes_a_file(tmp_path: Path) -> None:
 
     assert result.ok is True
     assert not (tmp_path / "gone.py").exists()
+
+
+def test_sandbox_delete_tool_removes_only_the_sandbox_file(tmp_path: Path) -> None:
+    target = tmp_path / "obsolete.py"
+    target.write_text("print('obsolete')\n", encoding="utf-8")
+    tool = SandboxDeleteTool(_sandbox(tmp_path), FileBroker(PolicyEngine()))
+
+    result = asyncio.run(tool.invoke({"path": "obsolete.py"}))
+
+    assert result.ok is True
+    assert result.data == {"path": "obsolete.py", "deleted": True}
+    assert not target.exists()
+    assert tool.spec.risk_level == "low"
+
+
+def test_sandbox_delete_tool_rejects_missing_or_outside_path(tmp_path: Path) -> None:
+    tool = SandboxDeleteTool(_sandbox(tmp_path), FileBroker(PolicyEngine()))
+
+    missing = asyncio.run(tool.invoke({"path": "missing.py"}))
+    outside = asyncio.run(tool.invoke({"path": "../outside.py"}))
+
+    assert missing.ok is False
+    assert outside.ok is False
+
+
+def test_sandbox_delete_tool_does_not_delete_data_classified_files(tmp_path: Path) -> None:
+    target = tmp_path / "fixtures" / "rows.json"
+    target.parent.mkdir()
+    target.write_text("{}", encoding="utf-8")
+    tool = SandboxDeleteTool(
+        _sandbox(tmp_path),
+        FileBroker(PolicyEngine(), classify_overrides={"fixtures/**": "data"}),
+    )
+
+    result = asyncio.run(tool.invoke({"path": "fixtures/rows.json"}))
+
+    assert result.ok is False
+    assert target.read_text(encoding="utf-8") == "{}"
 
 
 def test_sandbox_apply_patch_tool_renames_a_file(tmp_path: Path) -> None:

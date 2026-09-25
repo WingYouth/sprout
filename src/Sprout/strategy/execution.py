@@ -14,6 +14,7 @@ _DEFAULT_CODING_TOOLS = (
     "sandbox_search",
     "sandbox_git_inspect",
     "sandbox_write_file",
+    "sandbox_delete_file",
     "sandbox_edit_file",
     "sandbox_apply_patch",
 )

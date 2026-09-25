@@ -80,6 +80,7 @@ def test_execution_planner_builds_a_coding_task_spec(tmp_path: Path) -> None:
     assert "新增 API" in spec.instruction
     assert "src/api.py" in spec.resources
     assert "sandbox_apply_patch" in spec.tools
+    assert "sandbox_delete_file" in spec.tools
     assert spec.budget.max_model_calls > 0
     assert spec.budget.max_tool_calls > 0
     assert spec.metadata["mode"] == plan.mode.value

@@ -212,6 +212,68 @@ async def test_evaluation_runs_test_and_build_commands_in_the_sandbox(tmp_path) 
 
 
 @pytest.mark.asyncio
+async def test_single_python_file_uses_its_unique_matching_test(
+    tmp_path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "hello_world.py").write_text("GREETING = 'Hello'\n", encoding="utf-8")
+    test_dir = repo / "src" / "Sprout" / "tests"
+    test_dir.mkdir(parents=True)
+    (test_dir / "test_hello_world.py").write_text(
+        "def test_greeting():\n    assert True\n", encoding="utf-8"
+    )
+    (test_dir / "test_bubble_sort.py").write_text(
+        "import bubble_sort\n", encoding="utf-8"
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "init")
+
+    workspace = Workspace(
+        id="ws",
+        root=repo,
+        kind=WorkspaceKind.GIT_REPOSITORY,
+        manifest=WorkspaceManifest(
+            workspace_id="ws",
+            detected_languages=("python",),
+        ),
+    )
+    sandbox = GitWorktreeSandbox(workspace)
+    ref = await sandbox.create(branch="sprout-sandbox-focused-test")
+    try:
+        (ref.root / "hello_world.py").write_text(
+            "GREETING = 'Hello, World!'\n", encoding="utf-8"
+        )
+        storage = _storage(tmp_path)
+        task = Task(id="task-focused-test", workspace_id="ws")
+        await storage.metadata.save_execution_node(_sandbox_node(task.id, ref.root))
+        broker = RecordingProcessBroker()
+        executor = _node_executor(storage, broker)
+        monkeypatch.setattr("Sprout.runtime.nodes.shutil.which", lambda _name: None)
+
+        await executor._evaluation(
+            _evaluation_node(
+                task.id,
+                test_commands=["pytest", "npm test"],
+                build_commands=["npm run build"],
+            ),
+            workspace,
+            task,
+        )
+
+        assert [parts for parts, _ in broker.calls] == [
+            ("pytest", "src/Sprout/tests/test_hello_world.py"),
+            ("python", "-m", "compileall", "-q", "hello_world.py"),
+        ]
+        storage.metadata.close()
+    finally:
+        await sandbox.remove(ref)
+
+
+@pytest.mark.asyncio
 async def test_evaluation_without_a_sandbox_falls_back_to_the_workspace(tmp_path) -> None:
     storage = _storage(tmp_path)
     task = Task(id="task-nosandbox", workspace_id="ws")

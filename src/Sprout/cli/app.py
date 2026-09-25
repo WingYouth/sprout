@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import sys
 from collections.abc import Iterator
 
@@ -171,6 +172,10 @@ def _configure_console_encoding() -> None:
 
 def main() -> None:
     _configure_console_encoding()
+
+    # gRPC writes INFO-level fork diagnostics directly to stderr, outside
+    # Sprout's subprocess capture. Keep warnings and errors, suppress chatter.
+    os.environ["GRPC_VERBOSITY"] = "ERROR"
 
     from Sprout.config.loader import load_env_file
     from Sprout.config.sprout_home import ensure_sprout_home

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import replace
+from pathlib import Path
 
 from Sprout.events import EventBus
 from Sprout.execution.apply import ApplyBroker
@@ -27,7 +28,9 @@ from Sprout.task.models import DelegationScope
 from Sprout.workspace.models import Workspace
 
 
-def blocking_test_failures(results: Sequence[TestResult]) -> list[str]:
+def blocking_test_failures(
+    results: Sequence[TestResult], files_changed: Sequence[str] = ()
+) -> list[str]:
     """Verification results that should stop a change from landing.
 
     ``failed``, not ``not passed``. A command the policy withheld never ran, so
@@ -35,7 +38,83 @@ def blocking_test_failures(results: Sequence[TestResult]) -> list[str]:
     after a human has already reviewed the diff and approved it. A real failure
     still blocks, as it should.
     """
-    return [item.name for item in results if item.failed]
+    changed_languages: set[str] = set()
+    suffix_languages = {
+        ".py": {"python"},
+        ".js": {"node"},
+        ".jsx": {"node"},
+        ".mjs": {"node"},
+        ".cjs": {"node"},
+        ".ts": {"node", "typescript"},
+        ".tsx": {"node", "typescript"},
+        ".go": {"go"},
+        ".java": {"java"},
+        ".kt": {"kotlin"},
+        ".kts": {"kotlin"},
+        ".c": {"c-cpp"},
+        ".h": {"c-cpp"},
+        ".cc": {"c-cpp"},
+        ".cpp": {"c-cpp"},
+        ".cxx": {"c-cpp"},
+        ".hpp": {"c-cpp"},
+    }
+    manifest_languages = {
+        "pyproject.toml": {"python"},
+        "requirements.txt": {"python"},
+        "package.json": {"node"},
+        "package-lock.json": {"node"},
+        "pnpm-lock.yaml": {"node"},
+        "yarn.lock": {"node"},
+        "go.mod": {"go"},
+        "pom.xml": {"java"},
+        "build.gradle": {"java"},
+        "build.gradle.kts": {"kotlin"},
+        "settings.gradle": {"java"},
+        "settings.gradle.kts": {"kotlin"},
+        "cmakelists.txt": {"c-cpp"},
+        "makefile": {"c-cpp"},
+        "meson.build": {"c-cpp"},
+    }
+    for raw_path in files_changed:
+        path = Path(str(raw_path).replace("\\", "/"))
+        changed_languages.update(suffix_languages.get(path.suffix.casefold(), set()))
+        changed_languages.update(manifest_languages.get(path.name.casefold(), set()))
+
+    command_languages = {
+        "pytest": {"python"},
+        "python": {"python"},
+        "python3": {"python"},
+        "ruff": {"python"},
+        "mypy": {"python"},
+        "node": {"node", "typescript"},
+        "npm": {"node", "typescript"},
+        "pnpm": {"node", "typescript"},
+        "yarn": {"node", "typescript"},
+        "tsc": {"node", "typescript"},
+        "go": {"go"},
+        "mvn": {"java"},
+        "gradle": {"java", "kotlin"},
+        "gradlew": {"java", "kotlin"},
+        "cmake": {"c-cpp"},
+        "make": {"c-cpp"},
+        "cc": {"c-cpp"},
+        "gcc": {"c-cpp"},
+        "c++": {"c-cpp"},
+        "g++": {"c-cpp"},
+        "clang": {"c-cpp"},
+        "clang++": {"c-cpp"},
+    }
+
+    failures = []
+    for item in results:
+        if not item.failed:
+            continue
+        command = str(getattr(item, "name", "")).partition(": ")[2].split()
+        languages = command_languages.get(command[0], set()) if command else set()
+        if changed_languages and languages and not (languages & changed_languages):
+            continue
+        failures.append(str(getattr(item, "name", "verification")))
+    return failures
 
 
 class ChangeProposalService:
@@ -147,7 +226,9 @@ class ChangeProposalService:
                 f"Proposal {proposal.id} must be approved before apply, "
                 f"current={proposal.status.value}"
             )
-        failing = blocking_test_failures(proposal.test_results)
+        failing = blocking_test_failures(
+            proposal.test_results, proposal.files_changed
+        )
         if failing and not allow_failing_tests:
             # Approving a change used to be enough to land it even when the
             # verification the task itself ran had failed. The failure is now

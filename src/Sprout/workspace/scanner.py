@@ -174,8 +174,8 @@ class WorkspaceScanner:
             hints.add("github-actions")
 
         entry_points = tuple(sorted(self._entry_points(root)))
-        test_commands = self._test_commands(detected)
-        build_commands = self._build_commands(detected)
+        test_commands = self._test_commands(detected, root)
+        build_commands = self._build_commands(detected, root)
         framework_hints = tuple(sorted(hints))
 
         return WorkspaceManifest(
@@ -361,20 +361,31 @@ class WorkspaceScanner:
             return []
 
     @staticmethod
-    def _test_commands(languages: set[str]) -> tuple[str, ...]:
+    def _test_commands(
+        languages: set[str], root: Path | None = None
+    ) -> tuple[str, ...]:
         commands: list[str] = []
         if "python" in languages:
             commands.append("pytest")
         if "node" in languages:
-            commands.append("npm test")
+            commands.extend(WorkspaceScanner._node_script_commands(root, "test"))
         if "go" in languages:
             commands.append("go test ./...")
         if "rust" in languages:
             commands.append("cargo test")
-        if "java" in languages:
-            commands.append("mvn test")
-        if "kotlin" in languages:
-            commands.append("gradle test")
+        if "java" in languages or "kotlin" in languages:
+            if root is None or (root / "pom.xml").is_file():
+                commands.append("mvn test")
+            if root is None or any(
+                (root / name).is_file()
+                for name in (
+                    "build.gradle",
+                    "build.gradle.kts",
+                    "settings.gradle",
+                    "settings.gradle.kts",
+                )
+            ):
+                commands.append("gradle test")
         if "ruby" in languages:
             commands.append("bundle exec rspec")
         if "php" in languages:
@@ -390,18 +401,29 @@ class WorkspaceScanner:
         return tuple(commands)
 
     @staticmethod
-    def _build_commands(languages: set[str]) -> tuple[str, ...]:
+    def _build_commands(
+        languages: set[str], root: Path | None = None
+    ) -> tuple[str, ...]:
         commands: list[str] = []
         if "node" in languages:
-            commands.append("npm run build")
+            commands.extend(WorkspaceScanner._node_script_commands(root, "build"))
         if "go" in languages:
             commands.append("go build ./...")
         if "rust" in languages:
             commands.append("cargo build")
-        if "java" in languages:
-            commands.append("mvn package")
-        if "kotlin" in languages:
-            commands.append("gradle build")
+        if "java" in languages or "kotlin" in languages:
+            if root is None or (root / "pom.xml").is_file():
+                commands.append("mvn package")
+            if root is None or any(
+                (root / name).is_file()
+                for name in (
+                    "build.gradle",
+                    "build.gradle.kts",
+                    "settings.gradle",
+                    "settings.gradle.kts",
+                )
+            ):
+                commands.append("gradle build")
         if "ruby" in languages:
             commands.append("bundle install")
         if "php" in languages:
@@ -415,7 +437,33 @@ class WorkspaceScanner:
         if "dotnet" in languages:
             commands.append("dotnet build")
         if "c-cpp" in languages:
-            commands.append("cmake --build build")
+            if root is None:
+                commands.append("cmake --build build")
+            elif (root / "CMakeLists.txt").is_file():
+                commands.extend(("cmake -S . -B build", "cmake --build build"))
+            elif (root / "Makefile").is_file():
+                commands.append("make")
+        return tuple(commands)
+
+    @staticmethod
+    def _node_script_commands(root: Path | None, script: str) -> tuple[str, ...]:
+        if root is None:
+            return (f"npm {'test' if script == 'test' else 'run build'}",)
+        commands: list[str] = []
+        for package_file in root.rglob("package.json"):
+            if WorkspaceScanner._excluded(package_file, root):
+                continue
+            data = WorkspaceScanner._read_json(
+                package_file.parent, "package.json"
+            )
+            if script not in data.get("scripts", {}):
+                continue
+            relative = package_file.parent.relative_to(root)
+            prefix = "" if relative == Path(".") else f" --prefix {relative.as_posix()}"
+            command = f"npm{prefix} "
+            commands.append(
+                command + ("test" if script == "test" else "run build")
+            )
         return tuple(commands)
 
     @staticmethod

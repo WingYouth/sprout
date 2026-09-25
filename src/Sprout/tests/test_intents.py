@@ -22,6 +22,9 @@ from Sprout.runtime.factory import create_runtime
 def test_detect_task_hint() -> None:
     assert detect_task_hint("/task fix the bug") is True
     assert detect_task_hint("修复一个 bug") is True
+    assert detect_task_hint("帮我敲一个helloworld.py") is True
+    assert detect_task_hint("敲个 hello_world.py") is True
+    assert detect_task_hint("hello_world.py 写到哪里了") is False
     assert detect_task_hint("please refactor this module") is True
     assert detect_task_hint("你好") is False
     assert detect_task_hint("介绍一下这个项目") is False
@@ -63,7 +66,7 @@ def test_task_intent_submits_async(tmp_path: Path) -> None:
         runtime = create_runtime(settings)
         workspace = await runtime.open_workspace(tmp_path)
         reply = await runtime.handle(
-            Message("修复一个 bug", metadata={"workspace_id": workspace.id})
+            Message("帮我敲一个helloworld.py", metadata={"workspace_id": workspace.id})
         )
         assert "任务已提交" in reply.content
         assert (reply.metadata or {}).get("intent") == "task"

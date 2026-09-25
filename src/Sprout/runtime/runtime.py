@@ -2334,15 +2334,16 @@ class Runtime:
         if workspace is None:
             raise LookupError(f"Workspace not found: {task.workspace_id}")
 
-        manifest = self._scanner.scan(workspace)
-        workspace = Workspace(
-            id=workspace.id,
-            root=workspace.root,
-            kind=workspace.kind,
-            revision=workspace.revision,
-            manifest=manifest,
-        )
-        await metadata.save_workspace(workspace)
+        manifest = workspace.manifest or self._scanner.scan(workspace)
+        if workspace.manifest is None:
+            workspace = Workspace(
+                id=workspace.id,
+                root=workspace.root,
+                kind=workspace.kind,
+                revision=workspace.revision,
+                manifest=manifest,
+            )
+            await metadata.save_workspace(workspace)
         await metadata.save_task(task)
 
         required_paths = tuple(task.metadata.get("required_paths") or ())

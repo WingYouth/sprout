@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shlex
 import shutil
 import sys
@@ -55,6 +56,7 @@ from Sprout.cli.i18n import supported_languages as _supported_languages
 from Sprout.gateway.identity import Principal
 from Sprout.llm.messages import Usage
 from Sprout.message.models import Message
+from Sprout.runtime.changes import blocking_test_failures
 from Sprout.security.redact import Redactor
 
 _CHAT_HISTORY = InMemoryHistory()
@@ -270,6 +272,13 @@ async def _chat(runtime, settings, *, message: str | None, session: str | None, 
             workspace_id = await _confirm_cli_workspace(runtime)
             gateway = CLIGateway(runtime)
             if message is not None:
+                file_location = await _file_location_answer(
+                    message, runtime=runtime, workspace_id=workspace_id
+                )
+                if file_location is not None:
+                    typer.echo(file_location)
+                    _print_session_separator()
+                    return
                 directory = _current_directory_answer(message)
                 if directory is not None:
                     typer.echo(directory)
@@ -366,6 +375,34 @@ def _current_directory_answer(content: str) -> str | None:
     )
 
 
+async def _file_location_answer(
+    content: str, *, runtime: Any, workspace_id: str = ""
+) -> str | None:
+    """Resolve a file location by exact path, without recursively scanning."""
+    if not any(
+        marker in content.casefold()
+        for marker in ("写到哪里", "写到哪", "在哪里", "在哪", "位置", "where")
+    ):
+        return None
+    matches = re.findall(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.[A-Za-z0-9]+", content)
+    if not matches:
+        return None
+    requested = Path(matches[0]).expanduser()
+    workspace = await runtime.get_workspace(workspace_id) if workspace_id else None
+    root = Path(workspace.root).resolve() if workspace is not None else Path.cwd().resolve()
+    candidate = (root / requested).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return _L("文件路径超出当前工作区。", "The file path is outside the current workspace.")
+    if candidate.is_file():
+        return _L("文件位置：", "File location: ") + str(candidate)
+    return _L(
+        f"工作区根目录中没有 {requested.as_posix()}：{root}",
+        f"{requested.as_posix()} does not exist at the workspace root: {root}",
+    )
+
+
 async def _execute_language_command(requested: str | None = None) -> None:
     selected = requested or await _prompt_language_subcommand()
     if selected:
@@ -410,6 +447,12 @@ async def _repl(
             typer.echo("\n" + ui.muted(_L("对话已结束", "Chat ended.")))
             break
         if not content:
+            continue
+        file_location = await _file_location_answer(
+            content, runtime=runtime, workspace_id=workspace_id
+        )
+        if file_location is not None:
+            typer.echo(ui.text(file_location))
             continue
         directory = _current_directory_answer(content)
         if directory is not None:
@@ -747,23 +790,37 @@ async def _approve_task_gates(runtime: Any, task: Any, user: str) -> None:
             typer.echo(ui.key_value("files", ", ".join(proposal.files_changed) or "-"))
             for diff in proposal.diffs:
                 render_diff(diff.path, diff.diff_text)
-            has_failures = any(item.failed for item in proposal.test_results)
+            relevant_failures = blocking_test_failures(
+                proposal.test_results, proposal.files_changed
+            )
+            has_failures = bool(relevant_failures)
             if has_failures:
                 typer.echo(
                     ui.warning(
                         _L(
-                            "沙箱验证失败。普通批准会阻止融入；只有选择“接受验证失败并融入”才会继续。",
-                            "Sandbox verification failed. Ordinary approval will not apply the "
-                            "change; choose “Accept verification failures and apply” to proceed.",
+                            "相关验证未通过：{checks}。选择“是”将接受该结果并融入。",
+                            "Relevant verification failed: {checks}. Selecting “Yes” accepts "
+                            "that result and applies the change.",
+                        ).format(
+                            checks="、".join(relevant_failures)
+                            if _current_cli_language() == "zh"
+                            else ", ".join(relevant_failures)
                         )
                     )
                 )
-            prompt = _L(
-                "检查完变更后，批准将这些文件合入当前项目？",
-                "After reviewing the diff, approve applying these files to the project?",
+            prompt = (
+                _L(
+                    "验证失败：接受失败结果并融入这些文件？",
+                    "Verification failed: accept the failures and apply these files?",
+                )
+                if has_failures
+                else _L(
+                    "检查完变更后，批准将这些文件合入当前项目？",
+                    "After reviewing the diff, approve applying these files to the project?",
+                )
             )
             choice = await _prompt_task_gate_choice(
-                prompt, allow_failures=has_failures
+                prompt, allow_failures=has_failures, yes_no=True
             )
             if choice == REJECT:
                 await runtime.reject_change_proposal(
@@ -801,11 +858,13 @@ async def _prompt_task_gate_choice(
     *,
     allow_similar: bool = False,
     allow_failures: bool = False,
+    yes_no: bool = False,
 ) -> str | None:
     return await ask_approval(
         prompt,
         allow_similar=allow_similar,
         allow_failures=allow_failures,
+        yes_no=yes_no,
     )
 
 

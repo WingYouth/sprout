@@ -115,6 +115,64 @@ class SandboxWriteTool:
         return ToolResult.success(f"Wrote {path}", data={"path": path})
 
 
+class SandboxDeleteTool:
+    """Delete one file from the sandbox; the project remains unchanged until apply."""
+
+    def __init__(
+        self,
+        sandbox: SandboxRef,
+        broker: FileBroker,
+        *,
+        scope: DelegationScope | None = None,
+        task_id: str = "",
+    ) -> None:
+        self._sandbox = sandbox
+        self._broker = broker
+        self._scope = scope
+        self._task_id = task_id
+        self.spec = ToolSpec(
+            name="sandbox_delete_file",
+            description=(
+                "Delete one file inside the current sandbox worktree. This does not "
+                "delete the project copy; the deletion appears in the review diff "
+                "and reaches the project only after the normal apply approval."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Sandbox-relative path of the file to delete.",
+                    }
+                },
+                "required": ["path"],
+            },
+            # The mutation stays in the task worktree. The project's existing
+            # change-proposal approval is the single human gate before apply.
+            risk_level="low",
+        )
+
+    async def invoke(self, arguments: Mapping[str, Any]) -> ToolResult:
+        path = arguments.get("path")
+        if not isinstance(path, str) or not path.strip():
+            return ToolResult.failure("Argument 'path' must be a non-empty string")
+        if not await self._broker.exists(
+            self._sandbox, path, task_id=self._task_id, scope=self._scope
+        ):
+            return ToolResult.failure(
+                f"Delete target does not exist inside the sandbox: {path!r}"
+            )
+        result = await self._broker.delete(
+            self._sandbox, path, task_id=self._task_id, scope=self._scope
+        )
+        if not result.wrote:
+            return ToolResult.failure(result.reason or f"Could not delete {path}")
+        return ToolResult.success(
+            f"Deleted {path} from the sandbox; the deletion is pending project approval.",
+            data={"path": path, "deleted": True},
+        )
+
+
 class SandboxReadTool:
     """Lets an agent read the full text of a file in its sandbox worktree.
 
@@ -318,7 +376,7 @@ class SandboxApplyPatchTool:
             description=(
                 "Apply a unified diff (git diff / diff -u) to files inside the "
                 "current sandbox worktree. Supports multiple hunks and multiple "
-                "files, and can create new files."
+                "files, and can create, delete, or rename files."
             ),
             input_schema={
                 "type": "object",

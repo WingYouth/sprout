@@ -28,6 +28,7 @@ from Sprout.execution.models import (
 from Sprout.execution.process_broker import ProcessBroker
 from Sprout.execution.sandbox_tool import (
     SandboxApplyPatchTool,
+    SandboxDeleteTool,
     SandboxEditTool,
     SandboxGitTool,
     SandboxListTool,
@@ -120,6 +121,76 @@ def _test_result_from_payload(payload: Mapping[str, Any]) -> TestResult:
         # therefore always executed.
         executed=bool(payload.get("executed", True)),
     )
+
+
+def _languages_for_paths(paths: tuple[str, ...]) -> set[str]:
+    suffix_languages = {
+        ".py": "python",
+        ".js": "node",
+        ".jsx": "node",
+        ".mjs": "node",
+        ".cjs": "node",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".go": "go",
+        ".java": "java",
+        ".kt": "kotlin",
+        ".kts": "kotlin",
+        ".c": "c-cpp",
+        ".h": "c-cpp",
+        ".cc": "c-cpp",
+        ".cpp": "c-cpp",
+        ".cxx": "c-cpp",
+        ".hpp": "c-cpp",
+    }
+    manifest_languages = {
+        "pyproject.toml": "python",
+        "requirements.txt": "python",
+        "package.json": "node",
+        "package-lock.json": "node",
+        "pnpm-lock.yaml": "node",
+        "yarn.lock": "node",
+        "go.mod": "go",
+        "pom.xml": "java",
+        "build.gradle": "java",
+        "build.gradle.kts": "kotlin",
+        "settings.gradle": "java",
+        "settings.gradle.kts": "kotlin",
+        "cmakelists.txt": "c-cpp",
+        "makefile": "c-cpp",
+        "meson.build": "c-cpp",
+    }
+    languages: set[str] = set()
+    for path in paths:
+        relative = Path(path)
+        language = suffix_languages.get(relative.suffix.casefold())
+        if language:
+            languages.add(language)
+            if language == "typescript":
+                languages.add("node")
+        language = manifest_languages.get(relative.name.casefold())
+        if language:
+            languages.add(language)
+    return languages
+
+
+def _command_languages(command: str) -> set[str]:
+    return {
+        "pytest": {"python"},
+        "npm": {"node"},
+        "pnpm": {"node"},
+        "yarn": {"node"},
+        "go": {"go"},
+        "mvn": {"java"},
+        "gradle": {"java", "kotlin"},
+        "gradlew": {"java", "kotlin"},
+        "cmake": {"c-cpp"},
+        "make": {"c-cpp"},
+        "gcc": {"c-cpp"},
+        "g++": {"c-cpp"},
+        "clang": {"c-cpp"},
+        "clang++": {"c-cpp"},
+    }.get(command, set())
 
 
 class NodeExecutor:
@@ -254,6 +325,12 @@ class NodeExecutor:
         if sandbox_ref is not None:
             available_tools = {
                 "sandbox_write_file": SandboxWriteTool(
+                    sandbox_ref,
+                    self._file_broker,
+                    scope=task.delegation_scope,
+                    task_id=task.id,
+                ),
+                "sandbox_delete_file": SandboxDeleteTool(
                     sandbox_ref,
                     self._file_broker,
                     scope=task.delegation_scope,
@@ -520,6 +597,10 @@ class NodeExecutor:
                 continue
             planned.append((str(item.get("kind") or "acceptance"), tuple(command.split())))
         planned.extend(await self._static_check_commands(workspace, sandbox_ref))
+        if sandbox_ref is not None:
+            planned = await self._scope_verification_commands(
+                workspace, sandbox_ref, planned
+            )
         if not planned:
             planned = self._fallback_verification(workspace)
         attempts = max(1, int(node.metadata.get("verification_attempts", 1)))
@@ -605,6 +686,74 @@ class NodeExecutor:
             "pending_approvals": list(dict.fromkeys(pending_approvals)),
         }
 
+    @staticmethod
+    async def _scope_verification_commands(
+        workspace: Workspace,
+        sandbox_ref: SandboxRef,
+        planned: list[tuple[str, tuple[str, ...]]],
+    ) -> list[tuple[str, tuple[str, ...]]]:
+        """Keep verification relevant to the changed language and source file."""
+        if (
+            workspace.manifest is None
+            or workspace.kind is not WorkspaceKind.GIT_REPOSITORY
+        ):
+            return planned
+
+        changed = await GitWorktreeSandbox(workspace).changed_files(sandbox_ref)
+        changed_languages = _languages_for_paths(changed)
+        if changed_languages:
+            planned = [
+                (kind, command)
+                for kind, command in planned
+                if kind not in {"test", "build"}
+                or not command
+                or not _command_languages(command[0])
+                or _command_languages(command[0]) & changed_languages
+            ]
+
+        if not any(
+            kind == "test" and command == ("pytest",) for kind, command in planned
+        ):
+            return planned
+
+        source_files = [
+            Path(path)
+            for path in changed
+            if path.endswith(".py")
+            and not Path(path).name.startswith("test_")
+            and "tests" not in Path(path).parts
+            and "test" not in Path(path).parts
+        ]
+        if len(source_files) != 1:
+            return planned
+
+        source = source_files[0]
+        test_name = f"test_{source.stem}.py"
+        candidates = {
+            Path("tests") / test_name,
+            Path("test") / test_name,
+            Path("src") / "Sprout" / "tests" / test_name,
+            Path("src") / "tests" / test_name,
+            source.parent / "tests" / test_name,
+        }
+        matches = sorted(
+            candidate.as_posix()
+            for candidate in candidates
+            if (sandbox_ref.root / candidate).is_file()
+        )
+        if len(matches) != 1:
+            return planned
+
+        return [
+            (
+                kind,
+                ("pytest", matches[0])
+                if kind == "test" and command == ("pytest",)
+                else command,
+            )
+            for kind, command in planned
+        ]
+
     async def _run_verification_command(
         self,
         workspace: Workspace,
@@ -661,6 +810,24 @@ class NodeExecutor:
             )
             if ts_files and shutil.which("tsc") and (sandbox_ref.root / "tsconfig.json").exists():
                 commands.append(("check", ("tsc", "--noEmit")))
+
+        has_project_build = any(
+            (sandbox_ref.root / name).is_file()
+            for name in ("CMakeLists.txt", "Makefile", "meson.build")
+        )
+        if not has_project_build:
+            c_files = tuple(path for path in changed if path.endswith(".c"))
+            cpp_files = tuple(
+                path for path in changed if path.endswith((".cc", ".cpp", ".cxx"))
+            )
+            if c_files and shutil.which("cc"):
+                commands.extend(
+                    ("check", ("cc", "-fsyntax-only", path)) for path in c_files
+                )
+            if cpp_files and shutil.which("c++"):
+                commands.extend(
+                    ("check", ("c++", "-fsyntax-only", path)) for path in cpp_files
+                )
         return commands
 
     @staticmethod
@@ -952,7 +1119,9 @@ class NodeExecutor:
                 "so the edit is reviewable and follows the standard patch workflow. Use "
                 "sandbox_write_file for creating a complete new file, or the focused "
                 "sandbox_edit_file tool for a small exact replacement when a patch is "
-                "not practical. Never use process execution to write project files.",
+                "not practical. Use sandbox_delete_file to remove a file; deletion "
+                "stays in the sandbox until normal project approval. Never use "
+                "process execution to write or delete project files.",
             ]
         )
         if plan:

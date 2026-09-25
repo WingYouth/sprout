@@ -203,8 +203,8 @@ class PolicyEngine:
                 f"matrix:file.delete:{kind.value}",
             )
         return _decision(
-            AccessDecision.REQUIRE_APPROVAL,
-            "File deletion requires approval",
+            AccessDecision.SANDBOX_ONLY,
+            "File deletion is sandbox-first",
             f"matrix:file.delete:{kind.value}",
         )
 

@@ -163,7 +163,7 @@ class FileBroker:
         )
         decision = self._policy.decide(request)
         await emit_policy_decision(self._events, request, decision)
-        if decision.decision is not AccessDecision.REQUIRE_APPROVAL:
+        if decision.decision is not AccessDecision.SANDBOX_ONLY:
             return FileResult(
                 path=str(relative_path),
                 wrote=False,

@@ -57,16 +57,40 @@ async def test_async_approval_offers_explicit_failing_verification_override(monk
     monkeypatch.setattr(approval_prompt.questionary, "select", _select)
 
     result = await approval_prompt.ask_approval(
-        "verification failed", allow_failures=True
+        "verification failed", allow_failures=True, yes_no=True
     )
 
     assert result == approval_prompt.APPROVE_WITH_FAILURES
     assert [choice.value for choice in captured["choices"]] == [
-        approval_prompt.APPROVE,
         approval_prompt.APPROVE_WITH_FAILURES,
         approval_prompt.REJECT,
-        approval_prompt.DEFER,
     ]
+    assert [choice.title for choice in captured["choices"]] == ["是", "否"]
+
+
+@pytest.mark.asyncio
+async def test_binary_approval_uses_yes_no_and_regular_approve(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        approval_prompt.sys,
+        "stdin",
+        SimpleNamespace(isatty=lambda: True),
+    )
+
+    class _Question:
+        async def ask_async(self):
+            return approval_prompt.APPROVE
+
+    def _select(message, *, choices, style):
+        captured.update(message=message, choices=choices, style=style)
+        return _Question()
+
+    monkeypatch.setattr(approval_prompt.questionary, "select", _select)
+
+    result = await approval_prompt.ask_approval("apply changes?", yes_no=True)
+
+    assert result == approval_prompt.APPROVE
+    assert [choice.title for choice in captured["choices"]] == ["是", "否"]
 
 
 @pytest.mark.asyncio

@@ -32,30 +32,46 @@ def approval_select_style() -> Style:
 
 
 def _choices(
-    *, allow_similar: bool, allow_quit: bool, allow_failures: bool = False
+    *,
+    allow_similar: bool,
+    allow_quit: bool,
+    allow_failures: bool = False,
+    yes_no: bool = False,
 ) -> list[questionary.Choice]:
-    choices = [
-        questionary.Choice(L("批准 / 继续", "Approve / continue"), APPROVE)
-    ]
-    if allow_similar:
+    choices: list[questionary.Choice] = []
+    if yes_no:
         choices.append(
             questionary.Choice(
-                L("批准同类操作", "Approve similar operations"), APPROVE_SIMILAR
+                L("是", "Yes"),
+                APPROVE_WITH_FAILURES if allow_failures else APPROVE,
             )
         )
-    if allow_failures:
+    elif allow_failures:
         choices.append(
             questionary.Choice(
                 L("接受验证失败并融入", "Accept verification failures and apply"),
                 APPROVE_WITH_FAILURES,
             )
         )
-    choices.extend(
-        [
-            questionary.Choice(L("拒绝", "Reject"), REJECT),
-            questionary.Choice(L("稍后处理", "Decide later"), DEFER),
-        ]
+    else:
+        choices.append(
+            questionary.Choice(
+                L("批准 / 继续", "Approve / continue"), APPROVE
+            )
+        )
+    if allow_similar and not allow_failures:
+        choices.append(
+            questionary.Choice(
+                L("批准同类操作", "Approve similar operations"), APPROVE_SIMILAR
+            )
+        )
+    choices.append(
+        questionary.Choice(L("否", "No"), REJECT)
+        if yes_no
+        else questionary.Choice(L("拒绝", "Reject"), REJECT)
     )
+    if not yes_no:
+        choices.append(questionary.Choice(L("稍后处理", "Decide later"), DEFER))
     if allow_quit:
         choices.append(questionary.Choice(L("退出当前运行", "Stop this run"), QUIT))
     return choices
@@ -66,6 +82,7 @@ async def ask_approval(
     *,
     allow_similar: bool = False,
     allow_failures: bool = False,
+    yes_no: bool = False,
 ) -> str | None:
     """Ask an approval question asynchronously; cancellation means defer."""
     if not sys.stdin.isatty():
@@ -77,6 +94,7 @@ async def ask_approval(
                 allow_similar=allow_similar,
                 allow_quit=False,
                 allow_failures=allow_failures,
+                yes_no=yes_no,
             ),
             style=approval_select_style(),
         ).ask_async()

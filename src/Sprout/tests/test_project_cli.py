@@ -448,3 +448,11 @@ def test_main_keeps_the_boot_hooks_inside_the_redirect() -> None:
 
     for call in ("load_env_file()", "ensure_sprout_home()"):
         assert body.index(call) > redirect_at, f"{call} must run inside the redirect"
+
+
+def test_main_sets_grpc_verbosity_before_starting_cli() -> None:
+    module = importlib.import_module("Sprout.cli.app")
+    source = Path(module.__file__).read_text(encoding="utf-8")
+    body = source.split("def main() -> None:", 1)[1]
+
+    assert body.index('os.environ["GRPC_VERBOSITY"] = "ERROR"') < body.index("app()")

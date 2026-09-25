@@ -188,6 +188,23 @@ def test_apply_gate_blocks_a_mix_of_failure_and_withheld() -> None:
     assert blocking_test_failures(results) == ["pytest"]
 
 
+def test_apply_gate_ignores_failed_checks_for_untouched_languages() -> None:
+    from Sprout.execution.models import TestResult
+    from Sprout.runtime.changes import blocking_test_failures
+
+    results = [
+        TestResult(name="test: pytest src/tests/test_example.py", passed=True),
+        TestResult(name="test: npm test", passed=False, output="Missing script"),
+        TestResult(name="build: npm run build", passed=False, output="no package.json"),
+    ]
+
+    assert blocking_test_failures(results, ("hello_world.py",)) == []
+    assert blocking_test_failures(results, ("web/frontend/App.tsx",)) == [
+        "test: npm test",
+        "build: npm run build",
+    ]
+
+
 # -- withheld commands park on an approval ------------------------------------
 
 

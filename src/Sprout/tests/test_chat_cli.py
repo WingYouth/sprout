@@ -37,6 +37,37 @@ def test_current_directory_question_uses_the_process_cwd(monkeypatch, tmp_path) 
     assert chat._current_directory_answer("帮我查看当前目录下的文件") is None
 
 
+async def test_file_location_question_reports_real_path_or_absence(tmp_path) -> None:
+    class _Runtime:
+        async def get_workspace(self, _workspace_id):
+            return SimpleNamespace(root=tmp_path)
+
+    runtime = _Runtime()
+    missing = await chat._file_location_answer(
+        "hello_world.py 写到哪里了", runtime=runtime, workspace_id="workspace-1"
+    )
+    assert missing == (
+        f"工作区根目录中没有 hello_world.py：{tmp_path.resolve()}"
+    )
+
+    created = tmp_path / "src" / "hello_world.py"
+    created.parent.mkdir()
+    created.write_text("print('hello')\n", encoding="utf-8")
+    found = await chat._file_location_answer(
+        "src/hello_world.py 写到哪里了", runtime=runtime, workspace_id="workspace-1"
+    )
+    assert found == f"文件位置：{created.resolve()}"
+
+    # A basename-only question checks the root path only; it never walks files.
+    assert await chat._file_location_answer(
+        "hello_world.py 在哪里", runtime=runtime, workspace_id="workspace-1"
+    ) == f"工作区根目录中没有 hello_world.py：{tmp_path.resolve()}"
+
+    assert await chat._file_location_answer(
+        "介绍一下 hello_world.py", runtime=runtime, workspace_id="workspace-1"
+    ) is None
+
+
 def test_cli_markdown_renderer_removes_source_markers() -> None:
     text = "# 标题\n\n说明 **重点**\n\n```python\nprint('**keep**')\n```"
 
