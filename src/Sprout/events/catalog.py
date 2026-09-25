@@ -64,6 +64,7 @@ EVOLUTION_PUBLISHED = "evolution.published"
 # Intent recognition
 INTENT_RECOGNIZED = "intent.recognized"
 INTENT_CONVERSATION_REQUESTED = "intent.conversation.requested"
+INTENT_ANSWER_REQUESTED = "intent.answer.requested"
 INTENT_TASK_REQUESTED = "intent.task.requested"
 INTENT_DELETE_REQUESTED = "intent.delete.requested"
 INTENT_WORKSPACE_REQUESTED = "intent.workspace.requested"
@@ -116,6 +117,7 @@ EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition(EVOLUTION_PUBLISHED, "evolution", "evolution"),
     EventDefinition(INTENT_RECOGNIZED, "intent", "conversation"),
     EventDefinition(INTENT_CONVERSATION_REQUESTED, "intent", "conversation"),
+    EventDefinition(INTENT_ANSWER_REQUESTED, "intent", "conversation"),
     EventDefinition(INTENT_TASK_REQUESTED, "intent", "conversation"),
     EventDefinition(INTENT_DELETE_REQUESTED, "intent", "conversation"),
     EventDefinition(INTENT_WORKSPACE_REQUESTED, "intent", "conversation"),
@@ -195,6 +197,7 @@ __all__ = [
     "EVOLUTION_SIGNAL",
     "EventDefinition",
     "INTENT_APPROVAL_REQUESTED",
+    "INTENT_ANSWER_REQUESTED",
     "INTENT_CONVERSATION_REQUESTED",
     "INTENT_DELETE_REQUESTED",
     "INTENT_EVOLUTION_REQUESTED",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from Sprout.events.types import (
+    INTENT_ANSWER_REQUESTED,
     INTENT_APPROVAL_REQUESTED,
     INTENT_CONVERSATION_REQUESTED,
     INTENT_DELETE_REQUESTED,
@@ -34,6 +35,7 @@ INPUT_OUTPUT_CASES = [
     ("下载依赖并运行构建", "tool", INTENT_TOOL_REQUESTED),
     ("把这次失败沉淀成一个技能", "evolution", INTENT_EVOLUTION_REQUESTED),
     ("你好，介绍一下你自己", "conversation", INTENT_CONVERSATION_REQUESTED),
+    ("请解释一下闭包是什么", "answer", INTENT_ANSWER_REQUESTED),
 ]
 
 
@@ -151,7 +153,7 @@ async def test_intent_recognition_triggers_event_and_persists_metadata() -> None
 
 
 @pytest.mark.asyncio
-async def test_laya_intent_state_includes_similar_context_from_vector_store() -> None:
+async def test_intent_state_includes_similar_context_from_vector_store() -> None:
     class RecordingContextStore:
         def __init__(self, record: ContextRecord) -> None:
             self.record = record
@@ -181,7 +183,7 @@ async def test_laya_intent_state_includes_similar_context_from_vector_store() ->
                 "intent": "workspace",
                 "trigger_event": INTENT_WORKSPACE_REQUESTED,
                 "confidence": 0.91,
-                "reason": "captured_laya_state",
+                "reason": "captured_intent_state",
             }
 
     storage = StorageBundle.in_memory()

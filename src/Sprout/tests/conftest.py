@@ -40,7 +40,7 @@ class ScriptedModel:
 
 
 class TestIntentRecognizer:
-    """Small deterministic intent recognizer for tests; production uses laya."""
+    """Small deterministic intent recognizer for tests."""
 
     def classify(self, state):
         text = str(state.get("message") or "")
@@ -54,6 +54,11 @@ class TestIntentRecognizer:
             intent = "evolution"
         elif any(term in text for term in ("下载", "运行构建", "命令", "tool")):
             intent = "tool"
+        elif any(
+            term in text
+            for term in ("解释", "什么是", "为什么", "总结", "explain", "what is", "summarize")
+        ):
+            intent = "answer"
         elif any(
             term in text
             for term in ("删除", "删掉", "移除", "消失", "delete", "remove")
@@ -71,7 +76,7 @@ class TestIntentRecognizer:
             "intent": intent,
             "trigger_event": f"intent.{intent}.requested",
             "confidence": confidence,
-            "reason": "test_laya_recognizer",
+            "reason": "test_intent_recognizer",
         }
 
 
@@ -108,6 +113,8 @@ def build_runtime(
     storage = storage or StorageBundle.in_memory()
     tools = tools if tools is not None else create_tool_registry(storage)
     model = model or EchoModel()
+    models = ModelRegistry()
+    models.register(model, default=True)
     executor = ToolExecutor(
         tools=tools,
         policy=SecurityPolicy(),
@@ -115,11 +122,10 @@ def build_runtime(
     )
     runtime = Runtime(
         storage=storage,
-        models=ModelRegistry(),
+        models=models,
         tools=tools,
         skills=SkillRegistry(),
     )
-    runtime.models.register(model, default=True)
     runtime._intent_recognizer = intent_recognizer or TestIntentRecognizer()  # noqa: SLF001
     runtime.register_agent(
         "assistant",

@@ -1,18 +1,20 @@
 """Single source of truth for runtime intent recognition and routing.
 
-The seven intents used to be re-declared in ``runtime.py``, the intent prompt,
-and the event catalog. They live here once; callers derive their tables from
+The intents used to be re-declared in ``runtime.py``, the intent prompt, and
+the event catalog. They live here once; callers derive their tables from
 :data:`INTENT_EVENTS` instead of maintaining a second copy.
 """
 
 from __future__ import annotations
 
+import json
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Any
 
 from Sprout.events.catalog import (
+    INTENT_ANSWER_REQUESTED,
     INTENT_APPROVAL_REQUESTED,
     INTENT_CONVERSATION_REQUESTED,
     INTENT_DELETE_REQUESTED,
@@ -23,10 +25,13 @@ from Sprout.events.catalog import (
     INTENT_TOOL_REQUESTED,
     INTENT_WORKSPACE_REQUESTED,
 )
+from Sprout.llm.client import invoke_model
+from Sprout.llm.messages import LLMMessage
 
 
 class Intent(StrEnum):
     CONVERSATION = "conversation"
+    ANSWER = "answer"
     TASK = "task"
     DELETE = "delete"
     WORKSPACE = "workspace"
@@ -37,11 +42,14 @@ class Intent(StrEnum):
     STRATEGY = "strategy"
 
 
-DEFAULT_INTENT = Intent.CONVERSATION
+#: The safe fallback when no routed operation is recognised: hand the turn to
+#: the model for a plain answer.
+DEFAULT_INTENT = Intent.ANSWER
 
 #: intent -> the ``intent.*.requested`` event it triggers.
 INTENT_EVENTS: dict[Intent, str] = {
     Intent.CONVERSATION: INTENT_CONVERSATION_REQUESTED,
+    Intent.ANSWER: INTENT_ANSWER_REQUESTED,
     Intent.TASK: INTENT_TASK_REQUESTED,
     Intent.DELETE: INTENT_DELETE_REQUESTED,
     Intent.WORKSPACE: INTENT_WORKSPACE_REQUESTED,
@@ -103,8 +111,12 @@ _FILE_PATH_HINT = re.compile(
 
 _INTENT_CRITERIA: dict[str, str] = {
     Intent.CONVERSATION.value: (
-        "General chat, self-description, explanation, or a question that does "
-        "not request a routed operation."
+        "Greetings, small talk, chit-chat, or self-description that does not "
+        "request a routed operation."
+    ),
+    Intent.ANSWER.value: (
+        "A direct question, explanation, summary, or anything best answered by "
+        "a plain model response when no specialized operation applies."
     ),
     Intent.TASK.value: (
         "Create, edit, fix, refactor, implement, test, or otherwise change "
@@ -135,28 +147,19 @@ _INTENT_CRITERIA: dict[str, str] = {
 }
 
 
-class LayaIntentError(RuntimeError):
-    """Raised when the laya intent router cannot be used."""
+class IntentRecognitionError(RuntimeError):
+    """Raised when model-backed intent recognition cannot be used."""
 
 
-class LayaIntentRecognizer:
-    """Intent recognition through laya's System 1 router."""
+class LLMIntentRecognizer:
+    """Intent recognition through the configured large model."""
 
-    _router_instance: Any | None = None
+    def __init__(self, model: Any) -> None:
+        self._model = model
 
-    def __init__(self, router_factory: Callable[[], Any] | None = None) -> None:
-        self._router_factory = router_factory
-
-    def classify(self, state: Mapping[str, Any]) -> dict[str, Any]:
-        router = self._get_router()
-        result = router.predict(
-            dict(state),
-            self.questions(),
-            task="intent",
-            max_len=512,
-            head_max_len=256,
-        )
-        return self._decode(result)
+    async def classify(self, state: Mapping[str, Any]) -> dict[str, Any]:
+        response = await invoke_model(self._model, self.messages(state))
+        return self._decode(response.text)
 
     @classmethod
     def questions(cls) -> dict[str, dict[str, Any]]:
@@ -172,32 +175,33 @@ class LayaIntentRecognizer:
             }
         }
 
-    def _get_router(self) -> Any:
-        if self._router_factory is not None:
-            return self._router_factory()
-        if self.__class__._router_instance is None:
-            try:
-                from laya import Router
-            except ModuleNotFoundError as exc:
-                raise LayaIntentError(
-                    "Intent recognition requires the 'laya' package. Install it with "
-                    "`uv pip install laya` or sync project dependencies."
-                ) from exc
-            self.__class__._router_instance = Router(preload=False)
-        return self.__class__._router_instance
+    @classmethod
+    def messages(cls, state: Mapping[str, Any]) -> tuple[LLMMessage, LLMMessage]:
+        criteria = "\n".join(
+            f"- {name}: {description}" for name, description in _INTENT_CRITERIA.items()
+        )
+        system = (
+            "You are SEAM Sprout's runtime intent classifier. Choose exactly one "
+            "intent for the latest user message.\n\n"
+            f"Allowed intents:\n{criteria}\n\n"
+            "Return only compact JSON with this schema: "
+            '{"intent":"task","confidence":0.0,"reason":"short reason"}. '
+            "confidence must be between 0 and 1. Do not call tools."
+        )
+        user = json.dumps(dict(state), ensure_ascii=False, default=str)
+        return (LLMMessage.system(system), LLMMessage.user(user))
 
     @staticmethod
-    def _decode(result: Mapping[str, Any]) -> dict[str, Any]:
-        answers = result.get("answers") if isinstance(result, Mapping) else None
-        answer = answers.get("intent") if isinstance(answers, Mapping) else None
-        if not isinstance(answer, Mapping):
+    def _decode(text: str) -> dict[str, Any]:
+        answer = _parse_intent_json(text)
+        if answer is None:
             return {
                 "intent": DEFAULT_INTENT.value,
                 "trigger_event": intent_event(DEFAULT_INTENT),
                 "confidence": 0.0,
-                "reason": "laya_missing_intent_answer",
+                "reason": "llm_invalid_intent_response",
             }
-        intent = normalize_intent(str(answer.get("choice") or ""))
+        intent = normalize_intent(str(answer.get("intent") or answer.get("choice") or ""))
         confidence = _float_confidence(
             answer.get("answer_confidence", answer.get("confidence", 0.0))
         )
@@ -206,7 +210,7 @@ class LayaIntentRecognizer:
             "intent": intent.value,
             "trigger_event": intent_event(intent),
             "confidence": confidence,
-            "reason": "laya_router",
+            "reason": str(answer.get("reason") or "llm_intent_classifier"),
             **(
                 {"intent_probabilities": dict(probabilities)}
                 if isinstance(probabilities, Mapping)
@@ -215,7 +219,7 @@ class LayaIntentRecognizer:
         }
 
 
-def laya_intent_state(
+def intent_state(
     *,
     message: str,
     channel: str = "",
@@ -226,7 +230,7 @@ def laya_intent_state(
     recent_conversation: Sequence[Mapping[str, Any]] = (),
     similar_context: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
-    """Build the state payload passed to laya for intent recognition."""
+    """Build the state payload passed to the intent recognizer."""
     return {
         "message": message,
         "channel": channel,
@@ -237,6 +241,26 @@ def laya_intent_state(
         "recent_conversation": [dict(item) for item in recent_conversation],
         "similar_context_from_vector_db": [dict(item) for item in similar_context],
     }
+
+
+def _parse_intent_json(text: str) -> Mapping[str, Any] | None:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+    if stripped in _INTENT_CRITERIA:
+        return {"intent": stripped, "confidence": 0.5, "reason": "llm_intent_label"}
+    if not (stripped.startswith("{") and stripped.endswith("}")):
+        return None
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, Mapping) else None
 
 
 def _float_confidence(value: Any) -> float:
@@ -305,11 +329,11 @@ __all__ = [
     "INTENT_EVENTS",
     "TASK_KEYWORDS",
     "Intent",
-    "LayaIntentError",
-    "LayaIntentRecognizer",
+    "IntentRecognitionError",
+    "LLMIntentRecognizer",
     "detect_task_hint",
     "detect_delete_hint",
     "intent_event",
-    "laya_intent_state",
+    "intent_state",
     "normalize_intent",
 ]

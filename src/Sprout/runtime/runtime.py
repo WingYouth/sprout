@@ -8,6 +8,7 @@ knows about transports (CLI, MCP, Web), vendors, or the growth layer; see
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from collections.abc import Mapping
 from dataclasses import replace
@@ -24,7 +25,6 @@ from Sprout.events import (
     AGENT_FAILED,
     AGENT_STARTED,
     INTENT_RECOGNIZED,
-    INTENT_STRATEGY_REQUESTED,
     MESSAGE_PERSISTED,
     MESSAGE_RECEIVED,
     MESSAGE_SENT,
@@ -52,11 +52,14 @@ from Sprout.execution.process_broker import ProcessBroker
 from Sprout.execution.sandbox_tool import SandboxReadTool
 from Sprout.gateway.identity import Principal
 from Sprout.intents import (
+    DEFAULT_INTENT,
     INTENT_EVENTS,
-    LayaIntentError,
-    LayaIntentRecognizer,
+    IntentRecognitionError,
+    LLMIntentRecognizer,
     detect_task_hint,
-    laya_intent_state,
+    intent_event,
+    intent_state,
+    normalize_intent,
 )
 from Sprout.llm.language import detect_language
 from Sprout.message.attachment import Attachment
@@ -109,10 +112,6 @@ logger = logging.getLogger("Sprout.runtime")
 
 _DEFAULT_TRAJECTORY_DIR = Path.home() / ".sprout" / "data" / "trajectory"
 
-_INTENT_EVENTS: dict[str, str] = {
-    intent.value: event for intent, event in INTENT_EVENTS.items()
-}
-_INTENT_EVENTS["strategy"] = INTENT_STRATEGY_REQUESTED
 _PROJECT_ANALYZE_TERMS = (
     "scan project",
     "analyze project",
@@ -322,7 +321,7 @@ class Runtime:
                 settings.skills.disclosure if settings is not None else ""
             ),
         )
-        self._intent_recognizer = LayaIntentRecognizer()
+        self._intent_recognizer = self._default_intent_recognizer()
         self._sandbox_lifecycle = SandboxLifecycleService(storage.metadata)
         self._policy_engine = policy_engine or PolicyEngine()
         self.security = security
@@ -519,6 +518,12 @@ class Runtime:
         return self.security.audit if self.security is not None else None
 
     # -- collaborators -----------------------------------------------------
+    def _default_intent_recognizer(self) -> LLMIntentRecognizer | None:
+        try:
+            return LLMIntentRecognizer(self.models.default())
+        except (KeyError, LookupError):
+            return None
+
     def _metadata_or_raise(self) -> MetadataStore:
         metadata = self.storage.metadata
         if metadata is None:
@@ -1245,14 +1250,12 @@ class Runtime:
 
     async def _recognize_intent(self, message: Message, context):
         classification = await self._classify_intent(message, context)
-        intent = str(classification.get("intent") or "conversation")
-        if intent not in _INTENT_EVENTS:
-            intent = "conversation"
+        intent = normalize_intent(str(classification.get("intent") or "")).value
         trigger_event = str(
-            classification.get("trigger_event") or _INTENT_EVENTS[intent]
+            classification.get("trigger_event") or intent_event(intent)
         )
-        if trigger_event not in _INTENT_EVENTS.values():
-            trigger_event = _INTENT_EVENTS[intent]
+        if trigger_event not in INTENT_EVENTS.values():
+            trigger_event = intent_event(intent)
         confidence = _clamp_float(classification.get("confidence"), default=0.5)
         payload = {
             "intent": intent,
@@ -1273,7 +1276,7 @@ class Runtime:
             payload["workspace_id"] = workspace_id
         await self.events.publish(Event(INTENT_RECOGNIZED, payload, message.id))
         await self.events.publish(Event(trigger_event, payload, message.id))
-        if intent == "conversation":
+        if intent in {"conversation", DEFAULT_INTENT.value}:
             return message, context
         metadata: dict[str, Any] = {
             **dict(message.metadata),
@@ -1307,35 +1310,44 @@ class Runtime:
         explicit = message.metadata.get("intent") or message.metadata.get("intent_name")
         if isinstance(explicit, str) and explicit:
             intent = explicit.strip()
+            normalized = normalize_intent(intent)
             return {
                 "intent": intent,
                 "trigger_event": message.metadata.get("intent_event")
-                or _INTENT_EVENTS.get(intent, f"intent.{intent}.requested"),
+                or (
+                    intent_event(normalized)
+                    if intent == normalized.value
+                    else f"intent.{intent}.requested"
+                ),
                 "confidence": message.metadata.get("intent_confidence", 1.0),
                 "reason": "metadata override",
             }
 
         similar_context = await self._similar_context_for_intent(message)
-        state = self._laya_intent_state(
+        state = self._intent_state(
             message, context, similar_context=similar_context
         )
         try:
-            return await asyncio.to_thread(
-                self._intent_recognizer.classify,
-                state,
-            )
-        except LayaIntentError:
+            recognizer = self._intent_recognizer or self._default_intent_recognizer()
+            if recognizer is None:
+                raise IntentRecognitionError("no default model registered")
+            self._intent_recognizer = recognizer
+            classification = recognizer.classify(state)
+            if inspect.isawaitable(classification):
+                return await classification
+            return classification
+        except IntentRecognitionError:
             raise
         except Exception as exc:
             logger.warning(
-                "laya intent recognition failed (%s: %s); routing as conversation",
+                "LLM intent recognition failed (%s: %s); routing as answer",
                 type(exc).__name__,
                 exc,
             )
             return {
-                "intent": "conversation",
+                "intent": DEFAULT_INTENT.value,
                 "confidence": 0.0,
-                "reason": "laya_error",
+                "reason": "llm_intent_error",
             }
 
     async def _similar_context_for_intent(self, message: Message) -> list[dict[str, Any]]:
@@ -1401,7 +1413,7 @@ class Runtime:
             )
         return hits
 
-    def _laya_intent_state(
+    def _intent_state(
         self,
         message: Message,
         context,
@@ -1419,7 +1431,7 @@ class Runtime:
             content = str(getattr(item, "content", ""))[:500]
             if role and content:
                 recent.append({"role": role, "content": content})
-        return laya_intent_state(
+        return intent_state(
             message=message.content,
             channel=message.channel,
             user_id=message.user_id,

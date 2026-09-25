@@ -13,10 +13,10 @@ import asyncio
 import json
 
 from Sprout.config.loader import load_settings
+from Sprout.intents import intent_event, normalize_intent
 from Sprout.message.models import Message
 from Sprout.runtime.factory import create_runtime
 from Sprout.runtime.lifecycle import managed
-from Sprout.runtime.runtime import _INTENT_EVENTS
 
 
 async def _recognize(runtime, text: str) -> dict[str, object]:
@@ -29,11 +29,8 @@ async def _recognize(runtime, text: str) -> dict[str, object]:
         skills=runtime.skills.list(),
     )
     classification = await runtime._classify_intent(message, context)  # noqa: SLF001
-    intent = str(classification.get("intent") or "conversation")
-    trigger_event = str(
-        classification.get("trigger_event")
-        or _INTENT_EVENTS.get(intent, f"intent.{intent}.requested")
-    )
+    intent = normalize_intent(str(classification.get("intent") or "")).value
+    trigger_event = str(classification.get("trigger_event") or intent_event(intent))
     confidence = classification.get("confidence", 0.0)
     similar_context = await runtime._similar_context_for_intent(message)  # noqa: SLF001
     return {

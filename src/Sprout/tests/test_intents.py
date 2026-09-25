@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 from Sprout.config.loader import default_settings
-from Sprout.events.catalog import INTENT_DELETE_REQUESTED, INTENT_TASK_REQUESTED
+from Sprout.events.catalog import (
+    INTENT_ANSWER_REQUESTED,
+    INTENT_DELETE_REQUESTED,
+    INTENT_TASK_REQUESTED,
+)
 from Sprout.intents import (
     DEFAULT_INTENT,
     INTENT_EVENTS,
     Intent,
-    LayaIntentRecognizer,
+    LLMIntentRecognizer,
     detect_delete_hint,
     detect_task_hint,
     intent_event,
-    laya_intent_state,
+    intent_state,
     normalize_intent,
 )
+from Sprout.llm.messages import LLMResponse
 from Sprout.message.models import Message
 from Sprout.runtime.factory import create_runtime
 from Sprout.tests.conftest import TestIntentRecognizer
@@ -48,10 +51,14 @@ def test_intent_table_is_single_source() -> None:
     assert intent_event("task") == INTENT_TASK_REQUESTED
     assert INTENT_EVENTS[Intent.DELETE] == INTENT_DELETE_REQUESTED
     assert intent_event("delete") == INTENT_DELETE_REQUESTED
+    assert INTENT_EVENTS[Intent.ANSWER] == INTENT_ANSWER_REQUESTED
+    assert intent_event("answer") == INTENT_ANSWER_REQUESTED
     assert normalize_intent("task") is Intent.TASK
-    assert normalize_intent("unknown") is DEFAULT_INTENT
+    assert normalize_intent("unknown") is Intent.ANSWER
+    assert DEFAULT_INTENT is Intent.ANSWER
     assert set(INTENT_EVENTS.values()) == {
         "intent.conversation.requested",
+        "intent.answer.requested",
         "intent.task.requested",
         "intent.delete.requested",
         "intent.workspace.requested",
@@ -63,66 +70,61 @@ def test_intent_table_is_single_source() -> None:
     }
 
 
-def test_laya_intent_recognizer_uses_choice_question_and_decodes_answer() -> None:
-    class Router:
+def test_llm_intent_recognizer_builds_prompt_and_decodes_answer() -> None:
+    class Model:
+        name = "intent-model"
+
         def __init__(self) -> None:
             self.calls = []
 
-        def predict(self, state, questions, **kwargs):
-            self.calls.append((state, questions, kwargs))
-            return {
-                "answers": {
-                    "intent": {
-                        "choice": "task",
-                        "answer_confidence": 0.87,
-                        "probabilities": {"task": 0.87, "conversation": 0.13},
-                    }
-                }
-            }
+        async def chat(self, messages, *, tools=()):
+            self.calls.append((messages, tools))
+            return LLMResponse(
+                content=(
+                    '{"intent":"task","confidence":0.87,'
+                    '"reason":"test model",'
+                    '"probabilities":{"task":0.87,"conversation":0.13}}'
+                ),
+                finish_reason="stop",
+                model=self.name,
+            )
 
-    router = Router()
-    recognizer = LayaIntentRecognizer(router_factory=lambda: router)
+    model = Model()
+    recognizer = LLMIntentRecognizer(model)
 
-    result = recognizer.classify(laya_intent_state(message="fix tests"))
+    result = asyncio.run(recognizer.classify(intent_state(message="fix tests")))
 
     assert result["intent"] == "task"
     assert result["trigger_event"] == INTENT_TASK_REQUESTED
     assert result["confidence"] == 0.87
-    assert result["reason"] == "laya_router"
+    assert result["reason"] == "test model"
     assert result["intent_probabilities"]["task"] == 0.87
-    state, questions, kwargs = router.calls[0]
-    assert state["message"] == "fix tests"
+    messages, tools = model.calls[0]
+    assert tools == ()
+    assert "Allowed intents" in (messages[0].content or "")
+    assert "task" in (messages[0].content or "")
+    assert '"message": "fix tests"' in (messages[1].content or "")
+    questions = LLMIntentRecognizer.questions()
     assert questions["intent"]["type"] == "choice"
     assert "task" in questions["intent"]["criteria"]
-    assert kwargs["task"] == "intent"
+    assert "answer" in questions["intent"]["criteria"]
 
 
-def test_laya_intent_recognizer_default_router_cache_uses_router_instance(
-    monkeypatch,
-) -> None:
-    class Router:
-        def __init__(self, *, preload: bool) -> None:
-            self.preload = preload
+def test_llm_intent_recognizer_falls_back_to_model_answer() -> None:
+    class Model:
+        name = "intent-model"
 
-        def predict(self, state, questions, **kwargs):
-            return {
-                "answers": {
-                    "intent": {
-                        "choice": "conversation",
-                        "answer_confidence": 0.79,
-                    }
-                }
-            }
+        async def chat(self, messages, *, tools=()):
+            return LLMResponse(content="not json", finish_reason="stop", model=self.name)
 
-    monkeypatch.setitem(sys.modules, "laya", SimpleNamespace(Router=Router))
-    monkeypatch.setattr(LayaIntentRecognizer, "_router_instance", None)
+    recognizer = LLMIntentRecognizer(Model())
 
-    result = LayaIntentRecognizer().classify(laya_intent_state(message="hello"))
+    result = asyncio.run(recognizer.classify(intent_state(message="what now?")))
 
-    assert result["intent"] == "conversation"
-    assert result["confidence"] == 0.79
-    assert LayaIntentRecognizer._router_instance is not None
-    assert LayaIntentRecognizer._router_instance.preload is False
+    assert result["intent"] == "answer"
+    assert result["trigger_event"] == INTENT_ANSWER_REQUESTED
+    assert result["confidence"] == 0.0
+    assert result["reason"] == "llm_invalid_intent_response"
 
 
 def test_task_intent_submits_async(tmp_path: Path) -> None:

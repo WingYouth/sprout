@@ -16,6 +16,18 @@ if TYPE_CHECKING:
     from Sprout.config.loader import load_settings
     from Sprout.config.settings import Settings
     from Sprout.events.bus import Event, EventBus
+    from Sprout.intents import (
+        DEFAULT_INTENT,
+        INTENT_EVENTS,
+        Intent,
+        IntentRecognitionError,
+        LLMIntentRecognizer,
+        detect_delete_hint,
+        detect_task_hint,
+        intent_event,
+        intent_state,
+        normalize_intent,
+    )
     from Sprout.llm.aiyallm import AiyallmProvider
     from Sprout.llm.base import ModelProvider
     from Sprout.llm.echo import EchoModel
@@ -39,6 +51,11 @@ _LAZY_EXPORTS = {
     "EchoModel": ("Sprout.llm.echo", "EchoModel"),
     "Event": ("Sprout.events.bus", "Event"),
     "EventBus": ("Sprout.events.bus", "EventBus"),
+    "DEFAULT_INTENT": ("Sprout.intents", "DEFAULT_INTENT"),
+    "INTENT_EVENTS": ("Sprout.intents", "INTENT_EVENTS"),
+    "Intent": ("Sprout.intents", "Intent"),
+    "IntentRecognitionError": ("Sprout.intents", "IntentRecognitionError"),
+    "LLMIntentRecognizer": ("Sprout.intents", "LLMIntentRecognizer"),
     "Message": ("Sprout.message.models", "Message"),
     "ModelAgent": ("Sprout.agent.base", "ModelAgent"),
     "ModelProvider": ("Sprout.llm.base", "ModelProvider"),
@@ -52,8 +69,13 @@ _LAZY_EXPORTS = {
     "ToolSpec": ("Sprout.tools.spec", "ToolSpec"),
     "create_runtime": ("Sprout.runtime.factory", "create_runtime"),
     "create_storage": ("Sprout.storage.bundle", "create_storage"),
+    "detect_delete_hint": ("Sprout.intents", "detect_delete_hint"),
+    "detect_task_hint": ("Sprout.intents", "detect_task_hint"),
+    "intent_state": ("Sprout.intents", "intent_state"),
+    "intent_event": ("Sprout.intents", "intent_event"),
     "load_settings": ("Sprout.config.loader", "load_settings"),
     "managed": ("Sprout.runtime.lifecycle", "managed"),
+    "normalize_intent": ("Sprout.intents", "normalize_intent"),
 }
 
 __all__ = [
@@ -65,6 +87,11 @@ __all__ = [
     "EchoModel",
     "Event",
     "EventBus",
+    "DEFAULT_INTENT",
+    "INTENT_EVENTS",
+    "Intent",
+    "IntentRecognitionError",
+    "LLMIntentRecognizer",
     "Message",
     "ModelAgent",
     "ModelProvider",
@@ -78,8 +105,13 @@ __all__ = [
     "ToolSpec",
     "create_runtime",
     "create_storage",
+    "detect_delete_hint",
+    "detect_task_hint",
+    "intent_state",
+    "intent_event",
     "load_settings",
     "managed",
+    "normalize_intent",
 ]
 
 try:
@@ -111,6 +143,11 @@ __all__ = [
     "EchoModel",
     "Event",
     "EventBus",
+    "DEFAULT_INTENT",
+    "INTENT_EVENTS",
+    "Intent",
+    "IntentRecognitionError",
+    "LLMIntentRecognizer",
     "Message",
     "ModelAgent",
     "ModelProvider",
@@ -124,6 +161,11 @@ __all__ = [
     "ToolSpec",
     "create_runtime",
     "create_storage",
+    "detect_delete_hint",
+    "detect_task_hint",
+    "intent_state",
+    "intent_event",
     "load_settings",
     "managed",
+    "normalize_intent",
 ]
