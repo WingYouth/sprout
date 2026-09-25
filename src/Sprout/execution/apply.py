@@ -40,6 +40,7 @@ class ApplyBroker:
         workspace: Workspace,
         *,
         scope: DelegationScope | None = None,
+        session_id: str = "",
     ) -> ApplyResult:
         resource = ResourceRef(
             workspace_id=workspace.id,
@@ -60,7 +61,11 @@ class ApplyBroker:
         reason = decision.reason
         if decision.decision is AccessDecision.REQUIRE_APPROVAL and self._approvals is not None:
             applied = await self._approvals.is_approved(
-                ActionType.GIT_COMMIT.value, arguments, task_id=proposal.task_id
+                ActionType.GIT_COMMIT.value,
+                arguments,
+                task_id=proposal.task_id,
+                session_id=session_id,
+                resource_scope=proposal.id,
             )
             if not applied:
                 reason = reason or "Apply requires an approval record"
@@ -76,9 +81,12 @@ class ApplyBroker:
         workspace: Workspace,
         *,
         scope: DelegationScope | None = None,
+        session_id: str = "",
     ) -> ApplyResult:
         """Apply an approved proposal to the real workspace."""
-        result = await self.evaluate(proposal, workspace, scope=scope)
+        result = await self.evaluate(
+            proposal, workspace, scope=scope, session_id=session_id
+        )
         if not result.applied:
             return result
 
@@ -161,9 +169,12 @@ class ApplyBroker:
         workspace: Workspace,
         *,
         scope: DelegationScope | None = None,
+        session_id: str = "",
     ) -> ApplyResult:
         """Reverse an applied proposal using ``git apply -R``."""
-        result = await self.evaluate(proposal, workspace, scope=scope)
+        result = await self.evaluate(
+            proposal, workspace, scope=scope, session_id=session_id
+        )
         if not result.applied:
             return result
 

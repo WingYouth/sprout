@@ -1,4 +1,4 @@
-"""Policy-controlled sandbox file writes (AUTHZ §3.2).
+"""Policy-controlled sandbox file writes and deletes (AUTHZ §3.2).
 
 Writes used to be ``SANDBOX_ONLY`` regardless of what the file *was*, which
 meant a sandbox could overwrite ``.env`` or a private key. The target is now
@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from Sprout.events import FILE_DELETED, Event
 from Sprout.execution.models import FileResult, SandboxRef
 from Sprout.execution.policy_emit import emit_policy_decision
 from Sprout.security.access import AccessDecision, ActionRequest, ActionType
@@ -171,6 +172,18 @@ class FileBroker:
                 resource_kind=kind.value,
             )
         await asyncio.to_thread(self._delete, target)
+        if self._events is not None:
+            await self._events.publish(
+                Event(
+                    FILE_DELETED,
+                    {
+                        "task_id": task_id,
+                "sandbox_id": sandbox.id,
+                        "path": target.relative_to(Path(sandbox.root).resolve()).as_posix(),
+                        "resource_kind": kind.value,
+                    },
+                )
+            )
         return FileResult(path=str(relative_path), wrote=True, resource_kind=kind.value)
 
     @staticmethod

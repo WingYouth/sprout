@@ -19,6 +19,7 @@ from Sprout.events.types import (
     AUDIT_WRITE_FAILED,
     AUTH_ROLES_DISCARDED,
     AUTH_SCOPE_EXPIRED,
+    FILE_DELETED,
     POLICY_DECIDED,
 )
 from Sprout.execution.file_broker import FileBroker
@@ -50,6 +51,20 @@ async def test_file_broker_emits_policy_decided(tmp_path: Path) -> None:
     await broker.write_text(sandbox, "src/app.py", "print('hi')\n")
 
     assert POLICY_DECIDED in seen
+
+
+async def test_file_broker_emits_file_deleted(tmp_path: Path) -> None:
+    bus, seen = _recording_bus()
+    sandbox = SandboxRef(id="sb-delete", kind="git_worktree", root=tmp_path)
+    target = tmp_path / "obsolete.py"
+    target.write_text("pass\n", encoding="utf-8")
+    broker = FileBroker(PolicyEngine(), events=bus)
+
+    result = await broker.delete(sandbox, "obsolete.py", task_id="task-delete")
+
+    assert result.wrote
+    assert FILE_DELETED in seen
+    assert not target.exists()
 
 
 async def test_broker_without_a_bus_still_decides(tmp_path: Path) -> None:

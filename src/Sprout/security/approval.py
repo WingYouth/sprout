@@ -256,6 +256,11 @@ class ApprovalManager:
         grants. Reusable grants need a stable, human-auditable class so changing
         incidental parameters within the same session does not ask again.
         """
+        if tool == "process_run":
+            action = arguments.get("action")
+            if isinstance(action, str) and action.strip():
+                return action.strip()
+            return ""
         if tool != "cli_tool_run" or self._commands is None:
             return ""
         command = arguments.get("command")

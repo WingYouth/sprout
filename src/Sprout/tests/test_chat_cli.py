@@ -37,6 +37,23 @@ def test_current_directory_question_uses_the_process_cwd(monkeypatch, tmp_path) 
     assert chat._current_directory_answer("帮我查看当前目录下的文件") is None
 
 
+def test_capability_question_is_answered_locally() -> None:
+    answer = chat._capability_answer("你可以做什么？")
+
+    assert answer is not None
+    assert "SEAM Sprout" in answer
+    assert chat._capability_answer("帮我分析这个项目") is None
+
+
+def test_gateway_reply_session_id_reads_metadata_shape() -> None:
+    reply = SimpleNamespace(
+        content="ok",
+        metadata={"session_id": "session-1", "correlation_id": "message-1"},
+    )
+
+    assert chat._gateway_reply_session_id(reply, "fallback") == "session-1"
+
+
 async def test_file_location_question_reports_real_path_or_absence(tmp_path) -> None:
     class _Runtime:
         async def get_workspace(self, _workspace_id):
@@ -44,27 +61,27 @@ async def test_file_location_question_reports_real_path_or_absence(tmp_path) -> 
 
     runtime = _Runtime()
     missing = await chat._file_location_answer(
-        "hello_world.py 写到哪里了", runtime=runtime, workspace_id="workspace-1"
+        "demo_script.py 写到哪里了", runtime=runtime, workspace_id="workspace-1"
     )
     assert missing == (
-        f"工作区根目录中没有 hello_world.py：{tmp_path.resolve()}"
+        f"工作区根目录中没有 demo_script.py：{tmp_path.resolve()}"
     )
 
-    created = tmp_path / "src" / "hello_world.py"
+    created = tmp_path / "src" / "demo_script.py"
     created.parent.mkdir()
     created.write_text("print('hello')\n", encoding="utf-8")
     found = await chat._file_location_answer(
-        "src/hello_world.py 写到哪里了", runtime=runtime, workspace_id="workspace-1"
+        "src/demo_script.py 写到哪里了", runtime=runtime, workspace_id="workspace-1"
     )
     assert found == f"文件位置：{created.resolve()}"
 
     # A basename-only question checks the root path only; it never walks files.
     assert await chat._file_location_answer(
-        "hello_world.py 在哪里", runtime=runtime, workspace_id="workspace-1"
-    ) == f"工作区根目录中没有 hello_world.py：{tmp_path.resolve()}"
+        "demo_script.py 在哪里", runtime=runtime, workspace_id="workspace-1"
+    ) == f"工作区根目录中没有 demo_script.py：{tmp_path.resolve()}"
 
     assert await chat._file_location_answer(
-        "介绍一下 hello_world.py", runtime=runtime, workspace_id="workspace-1"
+        "介绍一下 demo_script.py", runtime=runtime, workspace_id="workspace-1"
     ) is None
 
 
@@ -235,7 +252,7 @@ async def test_foreground_task_does_not_report_an_empty_model_reply(
 
     from Sprout.message.models import OutboundMessage, StreamChunk
 
-    inputs = iter(("帮我写 hello_world.py", "/exit"))
+    inputs = iter(("帮我写 demo_script.py", "/exit"))
 
     async def _readline():
         return next(inputs)

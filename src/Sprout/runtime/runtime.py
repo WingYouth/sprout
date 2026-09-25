@@ -8,7 +8,6 @@ knows about transports (CLI, MCP, Web), vendors, or the growth layer; see
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Mapping
 from dataclasses import replace
@@ -24,21 +23,15 @@ from Sprout.events import (
     AGENT_COMPLETED,
     AGENT_FAILED,
     AGENT_STARTED,
-    INTENT_APPROVAL_REQUESTED,
-    INTENT_CONVERSATION_REQUESTED,
-    INTENT_EVOLUTION_REQUESTED,
-    INTENT_MEMORY_REQUESTED,
     INTENT_RECOGNIZED,
     INTENT_STRATEGY_REQUESTED,
-    INTENT_TASK_REQUESTED,
-    INTENT_TOOL_REQUESTED,
-    INTENT_WORKSPACE_REQUESTED,
     MESSAGE_PERSISTED,
     MESSAGE_RECEIVED,
     MESSAGE_SENT,
     RUNTIME_STARTED,
     RUNTIME_STOPPED,
     SESSION_CREATED,
+    WORKSPACE_CONSENT_REQUESTED,
     Event,
     EventBus,
     register_builtin_events,
@@ -58,9 +51,14 @@ from Sprout.execution.network_broker import NetworkBroker
 from Sprout.execution.process_broker import ProcessBroker
 from Sprout.execution.sandbox_tool import SandboxReadTool
 from Sprout.gateway.identity import Principal
-from Sprout.intents import Intent, detect_task_hint, intent_event
+from Sprout.intents import (
+    INTENT_EVENTS,
+    LayaIntentError,
+    LayaIntentRecognizer,
+    detect_task_hint,
+    laya_intent_state,
+)
 from Sprout.llm.language import detect_language
-from Sprout.llm.messages import LLMMessage
 from Sprout.message.attachment import Attachment
 from Sprout.message.converter import assistant_envelope, turn_envelope
 from Sprout.message.models import Message, OutboundMessage, StreamChunk
@@ -112,15 +110,9 @@ logger = logging.getLogger("Sprout.runtime")
 _DEFAULT_TRAJECTORY_DIR = Path.home() / ".sprout" / "data" / "trajectory"
 
 _INTENT_EVENTS: dict[str, str] = {
-    "conversation": INTENT_CONVERSATION_REQUESTED,
-    "task": INTENT_TASK_REQUESTED,
-    "workspace": INTENT_WORKSPACE_REQUESTED,
-    "tool": INTENT_TOOL_REQUESTED,
-    "approval": INTENT_APPROVAL_REQUESTED,
-    "memory": INTENT_MEMORY_REQUESTED,
-    "evolution": INTENT_EVOLUTION_REQUESTED,
-    "strategy": INTENT_STRATEGY_REQUESTED,
+    intent.value: event for intent, event in INTENT_EVENTS.items()
 }
+_INTENT_EVENTS["strategy"] = INTENT_STRATEGY_REQUESTED
 _PROJECT_ANALYZE_TERMS = (
     "scan project",
     "analyze project",
@@ -176,31 +168,6 @@ def _clamp_float(value: Any, *, default: float) -> float:
     except (TypeError, ValueError):
         return default
     return max(0.0, min(1.0, score))
-
-
-def _parse_intent_json(text: str) -> dict[str, Any]:
-    stripped = text.strip()
-    if not stripped:
-        return {"intent": "conversation", "confidence": 0.0, "reason": "empty_llm_response"}
-    if "```" in stripped:
-        chunks = stripped.split("```")
-        stripped = next(
-            (
-                chunk.removeprefix("json").strip()
-                for chunk in chunks
-                if chunk.strip().startswith(("{", "json"))
-            ),
-            stripped,
-        )
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start >= 0 and end > start:
-        stripped = stripped[start : end + 1]
-    try:
-        parsed = json.loads(stripped)
-    except json.JSONDecodeError:
-        return {"intent": "conversation", "confidence": 0.0, "reason": "invalid_llm_json"}
-    return parsed if isinstance(parsed, dict) else {"intent": "conversation"}
 
 
 def _agent_metadata(metadata: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -355,6 +322,7 @@ class Runtime:
                 settings.skills.disclosure if settings is not None else ""
             ),
         )
+        self._intent_recognizer = LayaIntentRecognizer()
         self._sandbox_lifecycle = SandboxLifecycleService(storage.metadata)
         self._policy_engine = policy_engine or PolicyEngine()
         self.security = security
@@ -382,6 +350,7 @@ class Runtime:
         self._file_broker = FileBroker(
             self._policy_engine,
             classify_overrides=security.classify_overrides if security is not None else {},
+            events=self.events,
         )
         self._apply_broker = ApplyBroker(
             self._policy_engine,
@@ -829,6 +798,11 @@ class Runtime:
             # conversation, and the person who asked is never told.
             metadata={
                 **({"session_id": session.id} if session.id else {}),
+                **(
+                    {"operation": "delete"}
+                    if message.metadata.get("intent") == "delete"
+                    else {}
+                ),
                 "response_language": str(
                     message.metadata.get("cli_language")
                     or message.metadata.get("response_language")
@@ -844,7 +818,7 @@ class Runtime:
                 session_id=session.id,
                 correlation_id=message.id,
                 metadata={
-                    "intent": "task",
+                    "intent": str(message.metadata.get("intent") or "task"),
                     "task_id": task.id,
                     "foreground_task": True,
                     "task_status": result.status.value,
@@ -857,7 +831,10 @@ class Runtime:
             channel=message.channel,
             session_id=session.id,
             correlation_id=message.id,
-            metadata={"intent": "task", "task_id": task.id},
+            metadata={
+                "intent": str(message.metadata.get("intent") or "task"),
+                "task_id": task.id,
+            },
         )
 
     # -- telling the asker what happened -----------------------------------
@@ -920,7 +897,17 @@ class Runtime:
 
     #: Intent classification values that name the coding path. Only ``task``
     #: reaches a compiled graph, hence a sandbox, hence the write tools.
-    _WORKSPACE_ASKING_INTENTS = frozenset({"task"})
+    _WORKSPACE_ASKING_INTENTS = frozenset({"task", "delete"})
+
+    @staticmethod
+    def _has_task_evidence(message: Message, context) -> bool:
+        if detect_task_hint(message.content or ""):
+            return True
+        confidence = _clamp_float(context.metadata.get("intent_confidence"), default=0.0)
+        return (
+            str(context.metadata.get("intent") or "") == "delete"
+            and confidence >= 0.75
+        )
 
     def _asks_for_workspace(self, message: Message, context, session=None) -> bool:
         """Is this a coding intent that cannot proceed without a workspace?
@@ -958,7 +945,7 @@ class Runtime:
             return False
         if session is not None and self.session_workspace_id(session):
             return False
-        return detect_task_hint(message.content)
+        return self._has_task_evidence(message, context)
 
     async def _dispatch_task_intent(
         self, message: Message, context, session
@@ -985,7 +972,9 @@ class Runtime:
         if self._asks_for_workspace(message, context, session):
             held, outbound = await self._request_workspace(message, session)
             return outbound, held
-        if str(context.metadata.get("intent") or "") != "task":
+        if str(context.metadata.get("intent") or "") not in {"task", "delete"}:
+            return None
+        if not self._has_task_evidence(message, context):
             return None
         explicit = str(message.metadata.get("workspace_id") or "")
         if explicit:
@@ -1008,8 +997,6 @@ class Runtime:
         # read→sandbox→plan→agent→evaluate run for it is exactly the mislabel
         # the keyword requirement exists to absorb. Such a turn stays a
         # conversation, where the agent can answer from what it already knows.
-        if not detect_task_hint(message.content or ""):
-            return None
         message = replace(
             message,
             metadata={**dict(message.metadata), "workspace_id": workspace_id},
@@ -1108,12 +1095,14 @@ class Runtime:
                 "origin_channel": message.channel,
             },
         )
+        requested_intent = str(message.metadata.get("intent") or "task")
         await self.events.publish(
             Event(
-                INTENT_TASK_REQUESTED,
+                WORKSPACE_CONSENT_REQUESTED,
                 {
                     "message_id": message.id,
                     "channel": message.channel,
+                    "intent": requested_intent,
                     WORKSPACE_CONSENT_KEY: True,
                     "proposed_workspace_root": proposed,
                 },
@@ -1131,7 +1120,7 @@ class Runtime:
             session_id=session.id,
             correlation_id=message.id,
             metadata={
-                "intent": "task",
+                "intent": requested_intent,
                 WORKSPACE_CONSENT_KEY: True,
                 "proposed_workspace_root": proposed,
                 "proposed_workspace_is_git": (root / ".git").exists(),
@@ -1235,6 +1224,7 @@ class Runtime:
                 metadata={
                     "workspace_id": workspace.id,
                     "workspace_consent": True,
+                    "intent": str(metadata.get("intent") or "task"),
                     **(
                         {"cli_language": str(metadata["cli_language"])}
                         if metadata.get("cli_language")
@@ -1254,7 +1244,7 @@ class Runtime:
         )
 
     async def _recognize_intent(self, message: Message, context):
-        classification = await self._classify_intent_with_llm(message, context)
+        classification = await self._classify_intent(message, context)
         intent = str(classification.get("intent") or "conversation")
         if intent not in _INTENT_EVENTS:
             intent = "conversation"
@@ -1313,7 +1303,7 @@ class Runtime:
         )
         return enriched, context
 
-    async def _classify_intent_with_llm(self, message: Message, context) -> dict[str, Any]:
+    async def _classify_intent(self, message: Message, context) -> dict[str, Any]:
         explicit = message.metadata.get("intent") or message.metadata.get("intent_name")
         if isinstance(explicit, str) and explicit:
             intent = explicit.strip()
@@ -1325,32 +1315,28 @@ class Runtime:
                 "reason": "metadata override",
             }
 
-        # Cheap task hint before spending an LLM call: an explicit coding task
-        # ("修复…", "/task …") is already decidable from the text alone.
-        if detect_task_hint(message.content or ""):
-            return {
-                "intent": Intent.TASK.value,
-                "trigger_event": intent_event(Intent.TASK),
-                "confidence": 0.8,
-                "reason": "task_hint",
-            }
-
         similar_context = await self._similar_context_for_intent(message)
-        prompt = self._intent_prompt(message, context, similar_context=similar_context)
+        state = self._laya_intent_state(
+            message, context, similar_context=similar_context
+        )
         try:
-            response = await self.models.default().chat(
-                [
-                    LLMMessage.system(
-                        "Classify the user's intent for SEAM Sprout event routing. "
-                        "Return only compact JSON."
-                    ),
-                    LLMMessage.user(prompt),
-                ],
-                tools=(),
+            return await asyncio.to_thread(
+                self._intent_recognizer.classify,
+                state,
             )
-        except Exception:
-            return {"intent": "conversation", "confidence": 0.0, "reason": "llm_error"}
-        return _parse_intent_json(response.text)
+        except LayaIntentError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "laya intent recognition failed (%s: %s); routing as conversation",
+                type(exc).__name__,
+                exc,
+            )
+            return {
+                "intent": "conversation",
+                "confidence": 0.0,
+                "reason": "laya_error",
+            }
 
     async def _similar_context_for_intent(self, message: Message) -> list[dict[str, Any]]:
         hits: list[dict[str, Any]] = []
@@ -1415,13 +1401,13 @@ class Runtime:
             )
         return hits
 
-    def _intent_prompt(
+    def _laya_intent_state(
         self,
         message: Message,
         context,
         *,
         similar_context: list[dict[str, Any]],
-    ) -> str:
+    ) -> dict[str, Any]:
         memory_meta = (
             context.memory.metadata
             if hasattr(context.memory, "metadata")
@@ -1433,33 +1419,15 @@ class Runtime:
             content = str(getattr(item, "content", ""))[:500]
             if role and content:
                 recent.append({"role": role, "content": content})
-        context_payload = {
-            "message": message.content,
-            "channel": message.channel,
-            "user_id": message.user_id,
-            "message_metadata": dict(message.metadata),
-            "context_metadata": dict(context.metadata),
-            "memory": memory_meta,
-            "recent_conversation": recent,
-            "similar_context_from_vector_db": similar_context,
-        }
-        allowed = {
-            "conversation": INTENT_CONVERSATION_REQUESTED,
-            "task": INTENT_TASK_REQUESTED,
-            "workspace": INTENT_WORKSPACE_REQUESTED,
-            "tool": INTENT_TOOL_REQUESTED,
-            "approval": INTENT_APPROVAL_REQUESTED,
-            "memory": INTENT_MEMORY_REQUESTED,
-            "evolution": INTENT_EVOLUTION_REQUESTED,
-            "strategy": INTENT_STRATEGY_REQUESTED,
-        }
-        return (
-            "Choose exactly one intent from this JSON object, where the value is "
-            "the event to trigger:\n"
-            f"{json.dumps(allowed, ensure_ascii=False)}\n\n"
-            "Use the current message plus context/recent conversation. Return JSON "
-            'like {"intent":"task","confidence":0.87,"reason":"..."}.\n\n'
-            f"Input:\n{json.dumps(context_payload, ensure_ascii=False, default=str)}"
+        return laya_intent_state(
+            message=message.content,
+            channel=message.channel,
+            user_id=message.user_id,
+            message_metadata=dict(message.metadata),
+            context_metadata=dict(context.metadata),
+            memory=memory_meta,
+            recent_conversation=recent,
+            similar_context=similar_context,
         )
 
     async def handle_stream(self, message: Message):
@@ -2129,6 +2097,9 @@ class Runtime:
             command,
             cwd=workspace.root,
             task_id=task_id,
+            session_id=str(task.metadata.get("session_id") or ""),
+            source=task.source,
+            requested_by=task.actor.user_id,
             timeout_seconds=timeout_seconds,
             scope=task.delegation_scope,
         )

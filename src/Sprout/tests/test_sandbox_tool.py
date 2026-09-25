@@ -15,7 +15,10 @@ from Sprout.execution.sandbox_tool import (
     SandboxReadTool,
     SandboxSearchTool,
 )
+from Sprout.runtime.nodes import NodeExecutor
 from Sprout.security.engine import PolicyEngine
+from Sprout.task.models import Task
+from Sprout.workspace.models import Workspace
 
 
 def _sandbox(root: Path) -> SandboxRef:
@@ -225,6 +228,20 @@ def test_sandbox_delete_tool_does_not_delete_data_classified_files(tmp_path: Pat
 
     assert result.ok is False
     assert target.read_text(encoding="utf-8") == "{}"
+
+
+def test_delete_tasks_are_directed_to_the_delete_tool(tmp_path: Path) -> None:
+    prompt = NodeExecutor._agent_prompt(
+        Task(
+            instruction="Remove src/obsolete.py",
+            metadata={"operation": "delete"},
+        ),
+        Workspace(id="ws", root=tmp_path),
+        (),
+    )
+
+    assert "Use sandbox_delete_file directly" in prompt
+    assert "Do not substitute a patch or process command" in prompt
 
 
 def test_sandbox_apply_patch_tool_renames_a_file(tmp_path: Path) -> None:

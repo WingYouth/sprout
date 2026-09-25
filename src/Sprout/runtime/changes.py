@@ -182,10 +182,10 @@ class ChangeProposalService:
             "git.commit",
             {"proposal_id": proposal.id, "risk": proposal.risk},
             task_id=proposal.task_id,
-            requested_by=decided_by,
             single_use=False,
             resource_scope=proposal.id,
             source="interactive",
+            session_id=await self._task_session_id(proposal.task_id),
         )
         await self._approvals.decide(record.id, approved=True, decided_by=decided_by)
         metadata = dict(proposal.metadata)
@@ -198,6 +198,12 @@ class ChangeProposalService:
                 metadata=metadata,
             )
         )
+
+    async def _task_session_id(self, task_id: str) -> str:
+        task = await self._metadata.get_task(task_id)
+        if task is None:
+            return ""
+        return str(task.metadata.get("session_id") or "")
 
     async def reject(self, proposal_id: str, *, reason: str = "") -> ChangeProposal:
         proposal = await self._require(proposal_id)
@@ -248,7 +254,10 @@ class ChangeProposalService:
         )
         workspace = await self._task_workspace(proposal.task_id)
         result = await self._apply_broker.apply(
-            proposal, workspace, scope=await self._task_scope(proposal.task_id)
+            proposal,
+            workspace,
+            scope=await self._task_scope(proposal.task_id),
+            session_id=await self._task_session_id(proposal.task_id),
         )
         if result.applied:
             metadata = dict(proposal.metadata)
@@ -278,7 +287,10 @@ class ChangeProposalService:
         )
         workspace = await self._task_workspace(proposal.task_id)
         result = await self._apply_broker.rollback(
-            proposal, workspace, scope=await self._task_scope(proposal.task_id)
+            proposal,
+            workspace,
+            scope=await self._task_scope(proposal.task_id),
+            session_id=await self._task_session_id(proposal.task_id),
         )
         if result.applied:
             await self._save(replace(proposal, status=ChangeProposalStatus.ROLLED_BACK))

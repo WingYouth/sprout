@@ -85,6 +85,7 @@ async def _parked_approval(runtime, task, *, tool="process_run"):
         requested_by="cli-user",
         source="interactive",
         single_use=False,
+        session_id=str(task.metadata.get("session_id") or ""),
     )
 
 
@@ -110,6 +111,23 @@ async def test_a_task_is_not_reported_to_another_session(tmp_path) -> None:
     await _waiting_task(runtime, tmp_path, session_id="s-1")
 
     assert await runtime.parked_tasks_for_session("s-2") == []
+    await runtime.stop()
+
+
+@pytest.mark.asyncio
+async def test_task_process_approval_keeps_session_and_class(tmp_path) -> None:
+    """Verification approvals should be traceable to the chat session that asked."""
+    runtime = _runtime(tmp_path)
+    task = await _waiting_task(runtime, tmp_path, session_id="s-process")
+
+    result = await runtime.run_task_process(task.id, ("python", "-c", "print(1)"))
+
+    assert result.allowed is False
+    assert result.approval_id
+    record = await runtime.approvals.store.get_approval(result.approval_id)
+    assert record is not None
+    assert record.session_id == "s-process"
+    assert record.approval_class == "verification_commands"
     await runtime.stop()
 
 
@@ -193,7 +211,7 @@ async def test_status_handles_distinct_approval_gates_in_one_interaction(
         task_id="task-1",
         source="cli",
         requested_by="operator",
-        approval_class="",
+        approval_class="verification_commands",
         action_summary='{"command":"pytest","args":["-q"]}',
     )
     proposal = SimpleNamespace(

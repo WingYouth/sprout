@@ -1112,18 +1112,31 @@ class NodeExecutor:
     ) -> str:
         """Compose the node-level instruction: task plus only its own resources."""
         lines = [task.instruction]
-        lines.extend(
-            [
-                "",
-                "For code changes, prefer sandbox_apply_patch with a complete unified diff "
-                "so the edit is reviewable and follows the standard patch workflow. Use "
-                "sandbox_write_file for creating a complete new file, or the focused "
-                "sandbox_edit_file tool for a small exact replacement when a patch is "
-                "not practical. Use sandbox_delete_file to remove a file; deletion "
-                "stays in the sandbox until normal project approval. Never use "
-                "process execution to write or delete project files.",
-            ]
-        )
+        if task.metadata.get("operation") == "delete":
+            lines.extend(
+                [
+                    "",
+                    "This is a file deletion task. Use sandbox_delete_file directly "
+                    "for the requested target. Use sandbox_search/list/read to resolve "
+                    "a natural-language filename reference. If multiple candidates "
+                    "match, do not delete any; report the candidates for clarification. "
+                    "Do not substitute a patch or process command. The deletion stays "
+                    "in the Git worktree until normal project change approval.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "",
+                    "For code changes, prefer sandbox_apply_patch with a complete unified diff "
+                    "so the edit is reviewable and follows the standard patch workflow. Use "
+                    "sandbox_write_file for creating a complete new file, or the focused "
+                    "sandbox_edit_file tool for a small exact replacement when a patch is "
+                    "not practical. Use sandbox_delete_file to remove a file; deletion "
+                    "stays in the sandbox until normal project approval. Never use "
+                    "process execution to write or delete project files.",
+                ]
+            )
         if plan:
             lines.extend(["", "Plan from the planning step:", plan])
         if findings:

@@ -38,6 +38,8 @@ AGENT_FAILED = "agent.failed"
 # Tool flow
 TOOL_EXECUTED = "tool.executed"
 TOOL_DENIED = "tool.denied"
+FILE_DELETED = "file.deleted"
+WORKSPACE_CONSENT_REQUESTED = "workspace.consent.requested"
 
 # Security flow
 APPROVAL_REQUESTED = "approval.requested"
@@ -63,6 +65,7 @@ EVOLUTION_PUBLISHED = "evolution.published"
 INTENT_RECOGNIZED = "intent.recognized"
 INTENT_CONVERSATION_REQUESTED = "intent.conversation.requested"
 INTENT_TASK_REQUESTED = "intent.task.requested"
+INTENT_DELETE_REQUESTED = "intent.delete.requested"
 INTENT_WORKSPACE_REQUESTED = "intent.workspace.requested"
 INTENT_TOOL_REQUESTED = "intent.tool.requested"
 INTENT_APPROVAL_REQUESTED = "intent.approval.requested"
@@ -97,6 +100,8 @@ EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition(AGENT_FAILED, "agent", "usage"),
     EventDefinition(TOOL_EXECUTED, "tools", "usage"),
     EventDefinition(TOOL_DENIED, "tools", "audit"),
+    EventDefinition(FILE_DELETED, "files", "audit"),
+    EventDefinition(WORKSPACE_CONSENT_REQUESTED, "workspace", "conversation"),
     EventDefinition(APPROVAL_REQUESTED, "approvals", "audit"),
     EventDefinition(APPROVAL_DECIDED, "approvals", "audit"),
     EventDefinition(APPROVAL_EXPIRED, "approvals", "audit"),
@@ -112,6 +117,7 @@ EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition(INTENT_RECOGNIZED, "intent", "conversation"),
     EventDefinition(INTENT_CONVERSATION_REQUESTED, "intent", "conversation"),
     EventDefinition(INTENT_TASK_REQUESTED, "intent", "conversation"),
+    EventDefinition(INTENT_DELETE_REQUESTED, "intent", "conversation"),
     EventDefinition(INTENT_WORKSPACE_REQUESTED, "intent", "conversation"),
     EventDefinition(INTENT_TOOL_REQUESTED, "intent", "audit"),
     EventDefinition(INTENT_APPROVAL_REQUESTED, "intent", "audit"),
@@ -182,12 +188,15 @@ __all__ = [
     "EVENT_LANES",
     "EVENT_REGISTRY",
     "EVENTS_BY_CATEGORY",
+    "FILE_DELETED",
+    "WORKSPACE_CONSENT_REQUESTED",
     "EVOLUTION_PROPOSAL",
     "EVOLUTION_PUBLISHED",
     "EVOLUTION_SIGNAL",
     "EventDefinition",
     "INTENT_APPROVAL_REQUESTED",
     "INTENT_CONVERSATION_REQUESTED",
+    "INTENT_DELETE_REQUESTED",
     "INTENT_EVOLUTION_REQUESTED",
     "INTENT_MEMORY_REQUESTED",
     "INTENT_RECOGNIZED",

@@ -78,7 +78,13 @@ async def test_apply_commits_and_rollback_reverts(tmp_path: Path) -> None:
 
         storage = _storage(tmp_path)
         await storage.metadata.save_workspace(workspace)
-        await storage.metadata.save_task(Task(id="task-commit", workspace_id="ws"))
+        await storage.metadata.save_task(
+            Task(
+                id="task-commit",
+                workspace_id="ws",
+                metadata={"session_id": "session-commit"},
+            )
+        )
         await storage.metadata.save_change_proposal(proposal)
 
         approvals = ApprovalManager(storage.operational)
@@ -91,6 +97,8 @@ async def test_apply_commits_and_rollback_reverts(tmp_path: Path) -> None:
         )
         approved = await service.approve(proposal.id, decided_by="test")
         assert approved.status is ChangeProposalStatus.APPROVED
+        records = await approvals.store.list_approvals()
+        assert records[0].session_id == "session-commit"
 
         applied = await service.apply(proposal.id)
         assert applied.applied is True, applied.reason
@@ -106,6 +114,59 @@ async def test_apply_commits_and_rollback_reverts(tmp_path: Path) -> None:
         rolled_back = await service.rollback(proposal.id)
         assert rolled_back.applied is True, rolled_back.reason
         assert "Revert" in _git(repo, "log", "-1", "--oneline")
+        storage.metadata.close()
+    finally:
+        await sandbox.remove(ref)
+
+
+@pytest.mark.asyncio
+async def test_delete_diff_applies_and_rollback_restores_file(tmp_path: Path) -> None:
+    repo = tmp_path / "delete-repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.com")
+    target = repo / "obsolete.py"
+    target.write_text("print('obsolete')\n", encoding="utf-8")
+    _git(repo, "add", "obsolete.py")
+    _git(repo, "commit", "-q", "-m", "init")
+
+    workspace = Workspace(id="ws-delete", root=repo, kind=WorkspaceKind.GIT_REPOSITORY)
+    sandbox = GitWorktreeSandbox(workspace)
+    ref = await sandbox.create()
+    try:
+        (ref.root / "obsolete.py").unlink()
+        diff = await sandbox.diff(ref)
+        files_changed = await sandbox.changed_files(ref)
+        assert files_changed == ("obsolete.py",)
+        assert "deleted file mode" in diff.diff_text
+
+        proposal = ChangeProposalBuilder().build(
+            task_id="task-delete",
+            sandbox_ref=ref,
+            files_changed=files_changed,
+            diffs=(diff,),
+        )
+        storage = _storage(tmp_path)
+        await storage.metadata.save_workspace(workspace)
+        await storage.metadata.save_task(Task(id="task-delete", workspace_id="ws-delete"))
+        await storage.metadata.save_change_proposal(proposal)
+
+        approvals = ApprovalManager(storage.operational)
+        service = ChangeProposalService(
+            storage.metadata,
+            storage.operational,
+            ApplyBroker(PolicyEngine(), approvals=approvals),
+            approvals=approvals,
+        )
+        await service.approve(proposal.id, decided_by="test")
+        applied = await service.apply(proposal.id)
+        assert applied.applied, applied.reason
+        assert not target.exists()
+
+        rolled_back = await service.rollback(proposal.id)
+        assert rolled_back.applied, rolled_back.reason
+        assert target.read_text(encoding="utf-8") == "print('obsolete')\n"
         storage.metadata.close()
     finally:
         await sandbox.remove(ref)

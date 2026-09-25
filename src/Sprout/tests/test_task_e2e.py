@@ -26,6 +26,7 @@ from Sprout.config.loader import default_settings
 from Sprout.gateway.project_gateway import ProjectGateway
 from Sprout.orchestration.models import NodeStatus, NodeType
 from Sprout.runtime.factory import create_runtime
+from Sprout.tests.conftest import TestIntentRecognizer
 from Sprout.tests.fake_model import FakeModel
 
 REQUIREMENT = "给 user 模块加一个导出 CSV 的函数"
@@ -104,6 +105,7 @@ def _runtime(tmp_path: Path, model: FakeModel):
     settings.storage.blobs_dir = str(tmp_path / "blobs")
     settings.security.audit.path = str(tmp_path / "audit.jsonl")
     runtime = create_runtime(settings)
+    runtime._intent_recognizer = TestIntentRecognizer()  # noqa: SLF001
 
     runtime.models.register(model, default=True)
     existing = runtime.agents.get(runtime.default_agent)

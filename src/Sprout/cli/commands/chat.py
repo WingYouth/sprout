@@ -284,6 +284,11 @@ async def _chat(runtime, settings, *, message: str | None, session: str | None, 
                     typer.echo(directory)
                     _print_session_separator()
                     return
+                capability = _capability_answer(message)
+                if capability is not None:
+                    _render_cli_markdown(capability)
+                    _print_session_separator()
+                    return
                 if _handle_natural_language_request(message):
                     return
                 reply = await gateway.handle_message(
@@ -304,8 +309,9 @@ async def _chat(runtime, settings, *, message: str | None, session: str | None, 
                 # One-shot mode (``sprout chat "..."``) can still answer: the
                 # prompt runs here rather than being silently dropped, which
                 # would leave a held task nobody knows about.
+                reply_session = _gateway_reply_session_id(reply, session)
                 handled = await _handle_cli_workspace_consent(
-                    runtime, reply.session_id or session, dict(reply.metadata), user
+                    runtime, reply_session, dict(reply.metadata), user
                 )
                 if not handled:
                     if dict(reply.metadata).get("foreground_task"):
@@ -315,9 +321,9 @@ async def _chat(runtime, settings, *, message: str | None, session: str | None, 
                         handled = True
                     else:
                         await _handle_cli_approval_prompt(
-                            runtime, reply.session_id or session, dict(reply.metadata), user
+                            runtime, reply_session, dict(reply.metadata), user
                         )
-                await _report_parked_tasks(runtime, reply.session_id or session)
+                await _report_parked_tasks(runtime, reply_session)
                 _print_session_separator()
                 return
             await _repl(
@@ -372,6 +378,49 @@ def _current_directory_answer(content: str) -> str | None:
         return None
     return _L("当前 CLI 进程目录：", "Current CLI process directory: ") + str(
         Path.cwd().resolve()
+    )
+
+
+def _capability_answer(content: str) -> str | None:
+    """Answer common self-description prompts without a slow model round-trip."""
+    normalized = re.sub(r"\s+", "", content.strip().rstrip("?？。.!！")).casefold()
+    questions = {
+        "你可以做什么",
+        "你能做什么",
+        "你会做什么",
+        "你能干什么",
+        "你是谁",
+        "介绍一下你自己",
+        "介绍下你自己",
+        "whatcanyoudo",
+        "whatareyou",
+        "whoareyou",
+        "help",
+    }
+    if normalized not in questions:
+        return None
+    return _L(
+        (
+            "我是 **SEAM Sprout**，可以帮你分析项目、修改代码、运行验证、处理审批、"
+            "查看任务/日志/存储，并调用 `sprout` CLI。\n\n"
+            "- 只读问题我可以直接回答，比如项目结构、git 状态、日志和数据库只读查询。\n"
+            "- 需要改文件时，我会先确认工作区，然后在受控流程里生成、验证和提交变更。\n"
+            "- 高风险命令和落地改动会停下来让你审批。\n\n"
+            "你可以直接说：`分析这个项目`、`修复测试`、`查看 approvals`、"
+            "`帮我改某个文件`。"
+        ),
+        (
+            "I am **SEAM Sprout**. I can analyze this project, edit code, run "
+            "verification, manage approvals, inspect tasks/logs/storage, and call "
+            "the `sprout` CLI.\n\n"
+            "- Read-only questions can be answered directly: project structure, git "
+            "state, logs, and read-only database queries.\n"
+            "- For file changes, I confirm a workspace first, then generate, verify, "
+            "and prepare the change through the controlled task flow.\n"
+            "- Risky commands and real workspace changes stop for your approval.\n\n"
+            "Try: `analyze this project`, `fix the tests`, `show approvals`, or "
+            "`edit this file`."
+        ),
     )
 
 
@@ -457,6 +506,11 @@ async def _repl(
         directory = _current_directory_answer(content)
         if directory is not None:
             typer.echo(ui.text(directory))
+            continue
+        capability = _capability_answer(content)
+        if capability is not None:
+            _render_cli_markdown(capability)
+            _print_session_separator()
             continue
         if _handle_natural_language_request(content):
             continue
@@ -721,6 +775,16 @@ async def _repl(
         if not session:
             typer.echo("")
         _print_session_separator()
+
+
+def _gateway_reply_session_id(reply: Any, fallback: str | None) -> str | None:
+    """Read the chat session id from either gateway response shape."""
+    metadata = dict(getattr(reply, "metadata", {}) or {})
+    return (
+        str(metadata.get("session_id") or "")
+        or str(getattr(reply, "session_id", "") or "")
+        or fallback
+    )
 
 
 async def _approve_task_gates(runtime: Any, task: Any, user: str) -> None:

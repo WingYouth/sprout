@@ -26,7 +26,6 @@ from Sprout.tools.spec import ToolSpec
 #: planner and the agent loop both go through ``chat``, so the model has to
 #: tell them apart the same way a real one would — from the prompt.
 _PLAN_MARKER = "output_schema"
-_INTENT_MARKER = "Classify the user's intent"
 
 
 class FakeModel:
@@ -59,14 +58,6 @@ class FakeModel:
         self, messages: Sequence[LLMMessage], *, tools: Sequence[ToolSpec] = ()
     ) -> LLMResponse:
         prompt = "\n".join(m.content or "" for m in messages)
-
-        if _INTENT_MARKER in prompt:
-            self.calls.append("intent")
-            return LLMResponse(
-                content=json.dumps({"intent": "task", "confidence": 0.9}),
-                finish_reason="stop",
-                model=self.name,
-            )
 
         if _PLAN_MARKER in prompt:
             self.calls.append("plan")

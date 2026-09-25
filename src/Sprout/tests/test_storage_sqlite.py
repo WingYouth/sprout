@@ -32,6 +32,11 @@ def _tables(path) -> set[str]:
         return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 
 
+def _columns(path, table: str) -> set[str]:
+    with sqlite3.connect(str(path)) as conn:
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
 # -- runtime.db (operational) ----------------------------------------------------
 
 
@@ -101,6 +106,28 @@ async def test_sqlite_approval_is_consumed_once_across_managers(tmp_path) -> Non
     stored = await store.get_approval(record.id)
     assert stored is not None and stored.status is ApprovalStatus.CONSUMED
     store.close()
+
+
+def test_operational_store_migrates_legacy_approval_scope_columns(tmp_path) -> None:
+    path = tmp_path / "legacy-audit.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE approvals ("
+            "id TEXT PRIMARY KEY, tool TEXT NOT NULL, "
+            "arguments_fingerprint TEXT NOT NULL, status TEXT NOT NULL, "
+            "requested_by TEXT NOT NULL DEFAULT 'system', decided_by TEXT, "
+            "reason TEXT, created_at TEXT NOT NULL, decided_at TEXT, "
+            "task_id TEXT NOT NULL DEFAULT '', single_use INTEGER NOT NULL DEFAULT 1, "
+            "expires_at TEXT, used_at TEXT, resource_scope TEXT NOT NULL DEFAULT '', "
+            "action_hash TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT 'unknown', "
+            "action_summary TEXT NOT NULL DEFAULT '')"
+        )
+
+    store = open_operational_store(str(path))
+    try:
+        assert {"session_id", "approval_class"} <= _columns(path, "approvals")
+    finally:
+        store.close()
 
 
 # -- knowledge.db ---------------------------------------------------------------

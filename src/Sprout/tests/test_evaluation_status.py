@@ -198,7 +198,7 @@ def test_apply_gate_ignores_failed_checks_for_untouched_languages() -> None:
         TestResult(name="build: npm run build", passed=False, output="no package.json"),
     ]
 
-    assert blocking_test_failures(results, ("hello_world.py",)) == []
+    assert blocking_test_failures(results, ("sample_module.py",)) == []
     assert blocking_test_failures(results, ("web/frontend/App.tsx",)) == [
         "test: npm test",
         "build: npm run build",

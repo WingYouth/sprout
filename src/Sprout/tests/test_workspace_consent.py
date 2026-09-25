@@ -21,7 +21,6 @@ the case that motivated it is a real message with a typo in it.
 from __future__ import annotations
 
 import asyncio
-import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -36,6 +35,7 @@ from Sprout.message.models import Message
 from Sprout.runtime.factory import create_runtime
 from Sprout.runtime.runtime import WORKSPACE_CONSENT_KEY
 from Sprout.task.models import Task, TaskStatus
+from Sprout.tests.conftest import TestIntentRecognizer
 
 #: A coding request in the shape a user actually types at the REPL.
 CODING_REQUEST = "帮我在当前项目的根目录下写一个冒泡排序的代码"
@@ -69,6 +69,7 @@ def _runtime(tmp_path: Path):
     settings.storage.blobs_dir = str(tmp_path / "blobs")
     settings.security.audit.path = str(tmp_path / "audit.jsonl")
     runtime = create_runtime(settings)
+    runtime._intent_recognizer = TestIntentRecognizer()  # noqa: SLF001
     runtime.models.register(EchoModel(), default=True)
     return runtime
 
@@ -108,27 +109,17 @@ class _AsksForWorkspace:
     dumb about everything else: the point under test is the runtime's response
     to the call, not how the call was decided.
 
-    ``classify_as`` defaults to ``conversation``, which is what the real
-    classifier returned for the typo message — so these tests exercise the
-    route where the wording gate is *known* to have missed, rather than a
-    hypothetical one.
+    The test recognizer may call the typo a task, but the wording gate is
+    known to miss it; the agent route remains the behavior under test.
     """
 
     name = "asks-for-workspace"
     model = name
 
-    def __init__(self, *, classify_as: str = "conversation") -> None:
-        self._intent = classify_as
+    def __init__(self) -> None:
         self.asked = False
 
     async def chat(self, messages, *, tools=()) -> LLMResponse:
-        prompt = "\n".join(m.content or "" for m in messages)
-        if "Classify the user's intent" in prompt:
-            return LLMResponse(
-                content=json.dumps({"intent": self._intent, "confidence": 0.9}),
-                finish_reason="stop",
-                model=self.name,
-            )
         available = {spec.name for spec in tools}
         if "request_workspace" in available and not self.asked:
             self.asked = True

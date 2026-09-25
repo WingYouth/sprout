@@ -16,6 +16,8 @@ from Sprout.llm.usage import get_usage_recorder
 if TYPE_CHECKING:
     from Sprout.tools.spec import ToolSpec
 
+_DEFAULT_STREAM_TIMEOUT_SECONDS = 15.0
+
 
 @dataclass(frozen=True, slots=True)
 class RetryPolicy:
@@ -142,7 +144,24 @@ class ModelOrchestrator:
             response = await self.chat(messages, tools=tools)
             yield response.text
             return
-        async for chunk in stream(messages, tools=tools):
+        yielded = False
+        iterator = stream(messages, tools=tools).__aiter__()
+        timeout = _stream_timeout_seconds(provider)
+        while True:
+            try:
+                chunk = await asyncio.wait_for(iterator.__anext__(), timeout)
+            except StopAsyncIteration:
+                return
+            except TimeoutError as exc:
+                await _close_async_iterator(iterator)
+                if not yielded:
+                    response = await self.chat(messages, tools=tools)
+                    yield response.text
+                    return
+                raise RuntimeError(
+                    f"Model stream timed out after {timeout:g}s waiting for more data"
+                ) from exc
+            yielded = True
             yield chunk
 
     async def stream_events(
@@ -163,8 +182,47 @@ class ModelOrchestrator:
                 usage=response.usage,
             )
             return
-        async for event in stream_events(messages, tools=tools):
+        yielded = False
+        iterator = stream_events(messages, tools=tools).__aiter__()
+        timeout = _stream_timeout_seconds(provider)
+        while True:
+            try:
+                event = await asyncio.wait_for(iterator.__anext__(), timeout)
+            except StopAsyncIteration:
+                return
+            except TimeoutError as exc:
+                await _close_async_iterator(iterator)
+                if not yielded:
+                    response = await self.chat(messages, tools=tools)
+                    yield LLMStreamEvent(
+                        content=response.text,
+                        tool_calls=response.tool_calls,
+                        finish_reason=response.finish_reason,
+                        usage=response.usage,
+                    )
+                    return
+                raise RuntimeError(
+                    f"Model stream timed out after {timeout:g}s waiting for more data"
+                ) from exc
+            yielded = True
             yield event
+
+
+async def _close_async_iterator(iterator: object) -> None:
+    close = getattr(iterator, "aclose", None)
+    if close is not None:
+        await close()
+
+
+def _stream_timeout_seconds(provider: ModelProvider) -> float:
+    configured = getattr(provider, "timeout_seconds", None)
+    try:
+        timeout = float(configured)
+    except (TypeError, ValueError):
+        return _DEFAULT_STREAM_TIMEOUT_SECONDS
+    if timeout <= 0:
+        return _DEFAULT_STREAM_TIMEOUT_SECONDS
+    return min(timeout, _DEFAULT_STREAM_TIMEOUT_SECONDS)
 
 
 def _failure_text(exc: Exception) -> str:

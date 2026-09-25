@@ -220,11 +220,11 @@ async def test_single_python_file_uses_its_unique_matching_test(
     _git(repo, "init", "-q")
     _git(repo, "config", "user.email", "test@example.com")
     _git(repo, "config", "user.name", "Test")
-    (repo / "hello_world.py").write_text("GREETING = 'Hello'\n", encoding="utf-8")
+    (repo / "sample_module.py").write_text("VALUE = 'before'\n", encoding="utf-8")
     test_dir = repo / "src" / "Sprout" / "tests"
     test_dir.mkdir(parents=True)
-    (test_dir / "test_hello_world.py").write_text(
-        "def test_greeting():\n    assert True\n", encoding="utf-8"
+    (test_dir / "test_sample_module.py").write_text(
+        "def test_value():\n    assert True\n", encoding="utf-8"
     )
     (test_dir / "test_bubble_sort.py").write_text(
         "import bubble_sort\n", encoding="utf-8"
@@ -244,8 +244,8 @@ async def test_single_python_file_uses_its_unique_matching_test(
     sandbox = GitWorktreeSandbox(workspace)
     ref = await sandbox.create(branch="sprout-sandbox-focused-test")
     try:
-        (ref.root / "hello_world.py").write_text(
-            "GREETING = 'Hello, World!'\n", encoding="utf-8"
+        (ref.root / "sample_module.py").write_text(
+            "VALUE = 'after'\n", encoding="utf-8"
         )
         storage = _storage(tmp_path)
         task = Task(id="task-focused-test", workspace_id="ws")
@@ -265,8 +265,8 @@ async def test_single_python_file_uses_its_unique_matching_test(
         )
 
         assert [parts for parts, _ in broker.calls] == [
-            ("pytest", "src/Sprout/tests/test_hello_world.py"),
-            ("python", "-m", "compileall", "-q", "hello_world.py"),
+            ("pytest", "src/Sprout/tests/test_sample_module.py"),
+            ("python", "-m", "compileall", "-q", "sample_module.py"),
         ]
         storage.metadata.close()
     finally:

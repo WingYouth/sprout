@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from Sprout.llm.messages import LLMMessage, LLMResponse
+from Sprout.llm.messages import LLMMessage, LLMResponse, LLMStreamEvent
 from Sprout.llm.orchestrator import ModelOrchestrationError, ModelOrchestrator
 
 
@@ -33,6 +33,14 @@ class _StreamingProvider(_Provider):
     async def stream(self, messages, *, tools=()):
         for chunk in ("alpha", "beta"):
             yield chunk
+
+
+class _HangingStreamEventsProvider(_Provider):
+    timeout_seconds = 0.01
+
+    async def stream_events(self, messages, *, tools=()):
+        await asyncio.sleep(3600)
+        yield LLMStreamEvent(content="never")
 
 
 def test_retries_then_succeeds() -> None:
@@ -88,6 +96,16 @@ def test_stream_falls_back_to_chat_when_provider_has_no_stream() -> None:
     chunks = asyncio.run(_collect(orchestrator.stream([LLMMessage.user("hi")])))
 
     assert chunks == ["single"]
+
+
+def test_stream_events_falls_back_to_chat_when_first_event_times_out() -> None:
+    provider = _HangingStreamEventsProvider([LLMResponse(content="single")])
+    orchestrator = ModelOrchestrator([provider])
+
+    events = asyncio.run(_collect(orchestrator.stream_events([LLMMessage.user("hi")])))
+
+    assert [event.content for event in events] == ["single"]
+    assert provider.calls == 1
 
 
 def test_does_not_retry_non_retryable_errors() -> None:

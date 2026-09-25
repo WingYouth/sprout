@@ -99,6 +99,7 @@ class GitWorktreeSandbox:
             # A repository may point ``diff.external`` at a program of its
             # choosing; the diff is data here, never a command to run.
             "--no-ext-diff",
+            "HEAD",
             # ``--`` ends the revision list; everything after it is a pathspec,
             # so the excludes below cannot be read as a revision name.
             "--",

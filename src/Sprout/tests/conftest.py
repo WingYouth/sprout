@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,7 +11,7 @@ import pytest
 from Sprout.agent.executor import ActionExecutor
 from Sprout.agent.loop import AgentLoop
 from Sprout.llm.echo import EchoModel
-from Sprout.llm.messages import LLMResponse, Role
+from Sprout.llm.messages import LLMResponse
 from Sprout.llm.registry import ModelRegistry
 from Sprout.runtime.runtime import Runtime
 from Sprout.security.approval import ApprovalManager
@@ -34,30 +33,46 @@ class ScriptedModel:
         self.calls: list[int] = []
 
     async def chat(self, messages, *, tools=()) -> LLMResponse:
-        first = messages[0] if messages else None
-        if (
-            first is not None
-            and first.role is Role.SYSTEM
-            and first.content
-            and "Classify the user's intent" in first.content
-        ):
-            text = "\n".join(str(message.content or "") for message in messages)
-            intent = (
-                "task"
-                if any(term in text for term in ("task", "fix", "修复", "任务"))
-                else "conversation"
-            )
-            return LLMResponse(
-                content=json.dumps(
-                    {"intent": intent, "confidence": 0.9, "reason": "test classifier"}
-                ),
-                finish_reason="stop",
-                model=self.name,
-            )
         self.calls.append(len(messages))
         if self.responses:
             return self.responses.pop(0)
         return LLMResponse(content="done", finish_reason="stop")
+
+
+class TestIntentRecognizer:
+    """Small deterministic intent recognizer for tests; production uses laya."""
+
+    def classify(self, state):
+        text = str(state.get("message") or "")
+        intent = "conversation"
+        confidence = 0.9
+        if any(term in text for term in ("批准", "同意", "拒绝", "approval")):
+            intent = "approval"
+        elif any(term in text for term in ("记住", "忘记", "memory")):
+            intent = "memory"
+        elif any(term in text for term in ("技能", "沉淀", "evolution", "growth")):
+            intent = "evolution"
+        elif any(term in text for term in ("下载", "运行构建", "命令", "tool")):
+            intent = "tool"
+        elif any(
+            term in text
+            for term in ("删除", "删掉", "移除", "消失", "delete", "remove")
+        ):
+            intent = "delete"
+            confidence = 0.93
+        elif any(
+            term in text
+            for term in ("执行任务", "修复", "实现", "敲", "写", "task", "fix")
+        ):
+            intent = "task"
+        elif any(term in text for term in ("入口文件", "项目", "工作区", "workspace")):
+            intent = "workspace"
+        return {
+            "intent": intent,
+            "trigger_event": f"intent.{intent}.requested",
+            "confidence": confidence,
+            "reason": "test_laya_recognizer",
+        }
 
 
 @dataclass
@@ -87,6 +102,7 @@ def build_runtime(
     tools: ToolRegistry | None = None,
     approvals: ApprovalManager | None = None,
     agent=None,
+    intent_recognizer=None,
 ) -> tuple[Runtime, ToolExecutor]:
     """Assemble a runtime with in-memory storage and an echo/scripted model."""
     storage = storage or StorageBundle.in_memory()
@@ -104,6 +120,7 @@ def build_runtime(
         skills=SkillRegistry(),
     )
     runtime.models.register(model, default=True)
+    runtime._intent_recognizer = intent_recognizer or TestIntentRecognizer()  # noqa: SLF001
     runtime.register_agent(
         "assistant",
         agent

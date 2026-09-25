@@ -28,7 +28,7 @@ async def _recognize(runtime, text: str) -> dict[str, object]:
         tools=runtime.tools.list(),
         skills=runtime.skills.list(),
     )
-    classification = await runtime._classify_intent_with_llm(message, context)  # noqa: SLF001
+    classification = await runtime._classify_intent(message, context)  # noqa: SLF001
     intent = str(classification.get("intent") or "conversation")
     trigger_event = str(
         classification.get("trigger_event")
