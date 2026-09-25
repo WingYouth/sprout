@@ -1,6 +1,6 @@
 """Root-level reference example: an in-place bubble sort with a stable contract.
 
-Like ``hello_world.py`` this file is deliberately *outside* ``src/Sprout``. It is
+Like the other root-level examples, this file is deliberately *outside* ``src/Sprout``. It is
 the next smallest complete target the runtime can be pointed at end to end: a
 pure-ish function that mutates the sequence it is given, a ``main()`` entry
 point, and a self-check that needs no test runner.
