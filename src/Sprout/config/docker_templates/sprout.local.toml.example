@@ -1,0 +1,36 @@
+# Three-lane (no-Docker) profile — copy to `sprout.toml` or point at it with
+#   SPROUT_CONFIG=~/.sprout/docker/sprout.local.toml.example
+#
+# SQLite, JSONL and BlobStore are files, so they need no service at all; the
+# three derived lanes fall back to in-process double implementations (memory
+# cache, in-memory cosine vectors) or are skipped when set to `none`. Nothing
+# external is contacted, which makes this the profile to use on a laptop with
+# no Docker: the whole test suite except the env-gated live tests runs here.
+#
+# To promote an individual lane later, point its DSN at the service and the
+# fan-out mirrors into it on the next write (see README.md for the Docker
+# values):
+#   cache   = "redis://127.0.0.1:6380"
+#   vectors = "milvus://127.0.0.1:19530"
+#   graph   = "neo4j://neo4j:sprout123@localhost:7687"
+
+[storage]
+core           = "sqlite:///data/sprout_core.db"
+conversation   = "sqlite:///data/sprout_conversation.db"
+knowledge      = "sqlite:///data/sprout_knowledge.db"
+audit          = "sqlite:///data/sprout_audit.db"
+usage          = "sqlite:///data/sprout_usage.db"
+context        = "sqlite:///data/context.db"   # keeps the context lane active
+cache          = "memory"
+vectors        = "memory"
+graph          = "none"
+blobs_dir      = "data/sprout_blobs"
+trajectory_dir = "data/sprout_trajectory"
+project_root   = "data/projects"
+
+[storage.observations]
+enabled = true
+dsn     = "sqlite:///data/sprout_audit.db"
+
+[memory]
+home = "data/memory"

@@ -1,0 +1,8 @@
+requirements.txt text eol=lf
+
+# The Docker stack ships a shell entry point and Python probes. Pin them to LF so
+# a checkout on a core.autocrlf=true machine cannot turn `#!/usr/bin/env bash`
+# into `...#!...\r` and break bootstrap.sh on Linux/macOS.
+docker/*.sh text eol=lf
+docker/*.py text eol=lf
+docker/*.toml text eol=lf

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sprout 架构与数据关系报告</title>
+  <style>
+    :root{--bg:#f5f7fb;--panel:#fff;--ink:#182230;--muted:#667085;--line:#dbe2ea;--blue:#2563eb;--cyan:#0891b2;--green:#15803d;--orange:#c2410c;--purple:#7e22ce;--red:#b91c1c;--shadow:0 12px 32px #18223012}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+    header{background:#101828;color:#fff;padding:38px max(24px,calc((100% - 1240px)/2));} header h1{margin:0 0 8px;font-size:30px} header p{margin:0;color:#cbd5e1}.wrap{max-width:1240px;margin:0 auto;padding:24px}.toc{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}.toc a{color:var(--blue);background:var(--panel);border:1px solid var(--line);padding:7px 11px;text-decoration:none;border-radius:7px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px;margin:16px 0;box-shadow:var(--shadow)}h2{font-size:21px;margin:0 0 14px}h3{font-size:16px;margin:20px 0 8px}p{margin:7px 0}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px}.card{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fbfcfe}.card strong{display:block;margin-bottom:5px}.tag{display:inline-block;padding:2px 7px;border-radius:999px;background:#e8eefc;color:#244eab;font-size:12px;margin:2px 3px 2px 0}.tag.green{background:#e7f6ec;color:var(--green)}.tag.orange{background:#fff0e6;color:var(--orange)}.tag.purple{background:#f3e8ff;color:var(--purple)}.tag.red{background:#feeceb;color:var(--red)}code{background:#eef2f7;padding:1px 5px;border-radius:4px;color:#344054}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:9px 8px}th{background:#f8fafc;color:#475467;font-weight:600}.scroll{overflow:auto}details{border-top:1px solid var(--line);padding:10px 0}details:first-of-type{border-top:0}summary{cursor:pointer;font-weight:600}.note{border-left:3px solid var(--blue);background:#eff6ff;padding:10px 13px;margin:12px 0}.warn{border-left-color:var(--orange);background:#fff7ed}.graph{overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fbfcfe;padding:12px}.graph svg{display:block;min-width:900px;width:100%;height:auto}.node{fill:#fff;stroke:#94a3b8;stroke-width:1.5}.node.core{fill:#dbeafe;stroke:#2563eb}.node.data{fill:#ecfdf5;stroke:#16a34a}.node.security{fill:#fff7ed;stroke:#ea580c}.edge{stroke:#64748b;stroke-width:1.5;fill:none;marker-end:url(#arrow)}.edge.dashed{stroke-dasharray:5 5}.legend{display:flex;gap:15px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:8px 0}.legend i{display:inline-block;width:12px;height:12px;border:1px solid #94a3b8;vertical-align:-2px;margin-right:4px}.footer{color:var(--muted);font-size:12px;padding:12px 0 35px}.search{width:100%;border:1px solid var(--line);border-radius:7px;padding:10px;margin:0 0 15px;font:inherit}
+    @media(max-width:700px){header h1{font-size:24px}.wrap{padding:14px}.panel{padding:15px}th,td{min-width:130px}}
+  </style>
+</head>
+<body>
+<header><h1>SEAM_Sprout 架构与数据关系报告</h1><p>Runtime、事件、审计、CLI 与数据层的当前代码关系总览</p></header>
+<main class="wrap">
+  <nav class="toc"><a href="#runtime">1. Runtime 调用关系</a><a href="#events">2. 事件注册</a><a href="#audit">3. 审计调用</a><a href="#cli">4. CLI 结构</a><a href="#storage">5. 落库与封箱</a></nav>
+  <input class="search" id="filter" placeholder="筛选报告内容，例如：Milvus、approval、project、SQLite">
+
+  <section class="panel" id="runtime"><h2>1. Runtime 调用了哪些东西</h2>
+    <p>统一入口是 <code>src/Sprout/runtime/factory.py:create_runtime</code>。CLI、Web API、MCP 和 Gateway 都应通过这个 factory 获得同一套 Runtime 装配方式。</p>
+    <div class="graph"><svg viewBox="0 0 1160 520" role="img" aria-label="Runtime关系图">
+      <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker></defs>
+      <path class="edge" d="M135 92 L270 92"/><path class="edge" d="M135 235 L270 235"/><path class="edge" d="M135 378 L270 378"/>
+      <path class="edge" d="M425 92 L560 92"/><path class="edge" d="M425 235 L560 235"/><path class="edge" d="M425 378 L560 378"/>
+      <path class="edge" d="M715 92 L850 92"/><path class="edge" d="M715 235 L850 235"/><path class="edge" d="M715 378 L850 378"/>
+      <path class="edge dashed" d="M640 125 C640 175 640 190 640 215"/><path class="edge dashed" d="M640 270 C640 320 640 340 640 360"/>
+      <rect class="node" x="20" y="55" width="115" height="74" rx="8"/><text x="78" y="84" text-anchor="middle">CLI</text><text x="78" y="105" text-anchor="middle" font-size="12">chat / project</text>
+      <rect class="node" x="20" y="198" width="115" height="74" rx="8"/><text x="78" y="227" text-anchor="middle">Web API</text><text x="78" y="248" text-anchor="middle" font-size="12">web/webapi</text>
+      <rect class="node" x="20" y="341" width="115" height="74" rx="8"/><text x="78" y="370" text-anchor="middle">Gateways</text><text x="78" y="391" text-anchor="middle" font-size="12">RPC / Feishu / WeChat</text>
+      <rect class="node core" x="270" y="55" width="155" height="74" rx="8"/><text x="347" y="84" text-anchor="middle">create_runtime</text><text x="347" y="105" text-anchor="middle" font-size="12">唯一装配入口</text>
+      <rect class="node core" x="270" y="198" width="155" height="74" rx="8"/><text x="347" y="227" text-anchor="middle">Runtime</text><text x="347" y="248" text-anchor="middle" font-size="12">handle / execute / tasks</text>
+      <rect class="node core" x="270" y="341" width="155" height="74" rx="8"/><text x="347" y="370" text-anchor="middle">AgentLoop</text><text x="347" y="391" text-anchor="middle" font-size="12">模型 + 工具执行</text>
+      <rect class="node security" x="560" y="55" width="155" height="74" rx="8"/><text x="637" y="84" text-anchor="middle">SecurityLayer</text><text x="637" y="105" text-anchor="middle" font-size="12">policy / approval / audit</text>
+      <rect class="node" x="560" y="198" width="155" height="74" rx="8"/><text x="637" y="227" text-anchor="middle">ToolRegistry</text><text x="637" y="248" text-anchor="middle" font-size="12">ToolExecutor / brokers</text>
+      <rect class="node" x="560" y="341" width="155" height="74" rx="8"/><text x="637" y="370" text-anchor="middle">ModelRegistry</text><text x="637" y="391" text-anchor="middle" font-size="12">aiyallm / configured model</text>
+      <rect class="node data" x="850" y="55" width="155" height="74" rx="8"/><text x="927" y="84" text-anchor="middle">StorageBundle</text><text x="927" y="105" text-anchor="middle" font-size="12">SQLite / lanes / stores</text>
+      <rect class="node data" x="850" y="198" width="155" height="74" rx="8"/><text x="927" y="227" text-anchor="middle">EventBus</text><text x="927" y="248" text-anchor="middle" font-size="12">catalog + recorder</text>
+      <rect class="node data" x="850" y="341" width="155" height="74" rx="8"/><text x="927" y="370" text-anchor="middle">Skills / Workspace</text><text x="927" y="391" text-anchor="middle" font-size="12">index / scan / context</text>
+    </svg></div>
+    <div class="legend"><span><i style="background:#dbeafe"></i>核心运行层</span><span><i style="background:#fff7ed"></i>安全与模型</span><span><i style="background:#ecfdf5"></i>数据与能力</span><span>实线：主要调用　虚线：事件/辅助关系</span></div>
+    <div class="grid"><div class="card"><strong>Runtime 主要子系统</strong><span class="tag">SessionManager</span><span class="tag">ContextBuilder</span><span class="tag">WorkspaceService</span><span class="tag">Task/ChangeProposal</span><span class="tag">ApplyBroker</span><span class="tag">Git/File/Process/Network/Database Broker</span></div><div class="card"><strong>Runtime 的外部接入</strong><p>CLI chat、Web chat/project/approval、RPC、Feishu、WeChat、MCP 均把请求转成 Runtime 操作；transport 不应自己复制业务编排。</p></div><div class="card"><strong>当前边界</strong><p>Runtime 本身不直接依赖具体 transport，也不直接决定模型供应商；factory 负责 storage、model、security、tools、skills、orchestrator 的装配。</p></div></div>
+  </section>
+
+  <section class="panel" id="events"><h2>2. 事件注册了哪些事件</h2><p><code>src/Sprout/events/catalog.py</code> 是规范目录；<code>register_builtin_events(EventBus())</code> 注册已知路由。当前共 42 个定义：35 个 EventBus 事件，7 个非 EventBus 的审计/Outbox 事件。</p>
+    <div class="scroll"><table><thead><tr><th>类别</th><th>事件</th><th>落点 / lane</th><th>机制</th></tr></thead><tbody>
+      <tr><td>runtime_lifecycle</td><td><code>runtime.started</code><br><code>runtime.stopped</code></td><td>audit</td><td>EventBus</td></tr>
+      <tr><td>conversation</td><td><code>message.received</code>、<code>message.sent</code>、<code>message.persisted</code>、<code>session.created</code></td><td>conversation</td><td>EventBus</td></tr>
+      <tr><td>agent</td><td><code>agent.started</code>、<code>agent.completed</code>、<code>agent.failed</code></td><td>usage</td><td>EventBus</td></tr>
+      <tr><td>tools</td><td><code>tool.executed</code>、<code>tool.denied</code></td><td>usage / audit</td><td>EventBus</td></tr>
+      <tr><td>approvals</td><td><code>approval.requested</code>、<code>approval.decided</code>、<code>approval.expired</code></td><td>audit</td><td>EventBus</td></tr>
+      <tr><td>authorization</td><td><code>auth.roles_discarded</code>、<code>auth.self_attestation_ignored</code>、<code>auth.scope_expired</code>、<code>policy.decided</code>、<code>audit.write_failed</code></td><td>audit</td><td>EventBus</td></tr>
+      <tr><td>skills</td><td><code>skill.published</code></td><td>knowledge</td><td>EventBus</td></tr>
+      <tr><td>evolution</td><td><code>evolution.signal</code>、<code>evolution.proposal</code>、<code>evolution.published</code></td><td>evolution</td><td>EventBus</td></tr>
+      <tr><td>intent</td><td><code>intent.recognized</code>、<code>intent.*.requested</code>（conversation/task/workspace/tool/approval/memory/evolution/strategy）</td><td>conversation / audit / knowledge / evolution</td><td>EventBus</td></tr>
+      <tr><td>audit 专用</td><td><code>policy.decision</code>、<code>approval.decision</code>、<code>command.allowlisted</code>、<code>network.blocked</code>、<code>approval.resume_failed</code></td><td>security.jsonl</td><td>SecurityAuditLog，非 EventBus</td></tr>
+      <tr><td>outbox 专用</td><td><code>turn.indexed</code>、<code>observation</code></td><td>conversation / audit</td><td>SQLite outbox + worker，非 EventBus</td></tr>
+    </tbody></table></div>
+    <div class="note">Runtime factory 会把 <code>ObservationRecorder</code> 订阅到 <code>*</code>，因此有 observations store 时，EventBus 事件统一进入观察/事件持久化链；没有 observations 时，Runtime 仍可启动。</div>
+  </section>
+
+  <section class="panel" id="audit"><h2>3. 审计被哪些部分调用</h2><p>审计分成两条互补路径：安全决策使用哈希链 JSONL，运行观察使用 EventBus/ObservationStore。两者不是同一个文件，也不应混为“日志”。</p>
+    <div class="grid"><div class="card"><strong>SecurityAuditLog</strong><p>实现：<code>src/Sprout/security/audit.py</code></p><p>文件：<code>~/.sprout/data/audit/security.jsonl</code></p><p>记录 policy decision、approval decision、命令 allowlist、网络拦截、授权异常及审计写入失败。每条记录带 <code>prev_hash</code> 和 <code>hash</code>。</p></div><div class="card"><strong>Audit 调用入口</strong><p><code>SecurityLayer</code> 注入审计对象；<code>PolicyEngine</code> / layered policy、ApprovalManager、CommandBroker、NetworkGuard、SecretBroker、Process/Git/Database/File 执行边界会触发安全决策记录。</p></div><div class="card"><strong>Runtime / Agent 观察</strong><p>Runtime、AgentLoop、ToolExecutor、事件总线发布生命周期和工具事件；<code>ObservationRecorder</code> 订阅并写入 observations lane。模型调用与工具用量另写 usage store。</p></div><div class="card"><strong>CLI / Web 读取与操作</strong><p>CLI：<code>sprout audit verify</code>、<code>sprout audit tail</code>、approval 命令；Web：approval 列表/决策、runtime 状态和事件相关接口。它们通过 Runtime 或存储契约访问，不直接改 hash 链。</p></div></div>
+  </section>
+
+  <section class="panel" id="cli"><h2>4. CLI 结构</h2><p>入口：<code>src/Sprout/cli/app.py</code>。无子命令进入 chat；其余命令按 Typer 子应用注册。</p>
+    <div class="grid"><div class="card"><strong>默认交互</strong><p><code>sprout</code> → <code>chat</code> → RuntimeGateway → Runtime</p><p>Slash 层包含 <code>/skill</code>、<code>/db</code>、<code>/project</code>、<code>/audit</code>、<code>/approval</code>、<code>/model</code>、<code>/language</code> 等。</p></div><div class="card"><strong>运行与服务</strong><p><code>chat</code>、<code>serve</code>、<code>info</code>、<code>stop</code></p><p>Web 和 RPC 也复用 Runtime factory。</p></div><div class="card"><strong>数据与审计</strong><p><code>db</code>、<code>storage</code>、<code>session</code>、<code>memory</code>、<code>audit</code>、<code>approvals</code></p></div><div class="card"><strong>能力与编排</strong><p><code>skills</code>、<code>project</code>、<code>evolution</code>、<code>orchestrator</code>、<code>gateway</code>、<code>remote</code>、<code>mcp</code>、<code>model</code></p></div></div>
+    <div class="note">CLI 的配置来源是 TOML / 环境变量；Runtime 启动前由 factory 创建 storage、模型、SecurityLayer、工具注册表、Skill 注册表和本地/Temporal 编排后端。</div>
+  </section>
+
+  <section class="panel" id="storage"><h2>5. 落库、封箱与当前数据库使用关系</h2><p>“封箱”可理解为数据边界：业务模块通过 storage contract 和 <code>StorageBundle</code> 访问数据库，具体 DSN 决定 SQLite、Redis、Milvus、Neo4j、JSONL 或 BlobStore 后端；业务代码不应绕过 contract 直连数据库。</p>
+    <div class="scroll"><table><thead><tr><th>数据库 / lane</th><th>权威性</th><th>主要保存</th><th>使用板块</th><th>派生关系</th></tr></thead><tbody>
+      <tr><td><strong>SQLite</strong><br><code>sprout_core.db</code></td><td><span class="tag green">authority</span></td><td>workspaces、tasks、runs、steps、changes、artifacts、change proposals、execution nodes</td><td>Runtime、WorkspaceService、ProjectGateway、Strategy/Execution、ApplyBroker、Task/Orchestration、Web Project</td><td>Neo4j 项目/任务关系；BlobStore 保存大 payload</td></tr>
+      <tr><td><strong>SQLite</strong><br><code>sprout_conversation.db</code></td><td><span class="tag green">authority</span></td><td>sessions、turns、messages、attachments 元数据、message-task links</td><td>SessionManager、Runtime message flow、Chat CLI、Web Chat、Gateway、Session CLI</td><td>Milvus 向量、Neo4j 链、FTS、Redis 热缓存；附件内容进 BlobStore</td></tr>
+      <tr><td><strong>SQLite</strong><br><code>sprout_knowledge.db</code></td><td><span class="tag green">authority</span></td><td>knowledge、knowledge items、capability notes、evidence、links</td><td>Context/Workspace knowledge、Strategy ImpactAnalyzer、Memory/Knowledge、MCP resources</td><td>Milvus 语义向量</td></tr>
+      <tr><td><strong>SQLite</strong><br><code>sprout_audit.db</code></td><td><span class="tag green">authority</span></td><td>approvals、events、reflections、operational/security records</td><td>SecurityLayer、ApprovalManager、Audit CLI、Web Approvals、ObservationRecorder、Runtime authorization</td><td>另有 security.jsonl 哈希链作为安全审计证据</td></tr>
+      <tr><td><strong>SQLite</strong><br><code>sprout_usage.db</code></td><td><span class="tag green">authority</span></td><td>model calls、tool usage</td><td>LLM client/orchestrator、AgentLoop、ToolExecutor、Usage recorder、Info/Web telemetry</td><td>主要是统计查询，不作为业务状态权威</td></tr>
+      <tr><td><strong>SQLite</strong><br><code>sprout_context.db</code></td><td><span class="tag orange">derived</span></td><td>context snapshots 与 FTS/memory index</td><td>ContextBuilder、retrieval、session search、Web Storage</td><td>可从 session/knowledge 重建</td></tr>
+      <tr><td><strong>JSONL</strong><br>trajectory / project traces</td><td><span class="tag green">evidence</span></td><td>trajectory、replay、rollback、session event streams</td><td>Runtime trajectory recorder、Execution/Change、Project、Audit/Replay</td><td>追加写入，按任务/项目保存</td></tr>
+      <tr><td><strong>BlobStore</strong><br><code>~/.sprout/data/blobs</code></td><td><span class="tag green">authority</span></td><td>attachments、oversized bodies、artifact payloads、media/exports</td><td>Session cascade、Artifact、Attachment、Export、Project/Change</td><td>SQLite 只存 URI/metadata</td></tr>
+      <tr><td><strong>Redis</strong></td><td><span class="tag purple">cache/capability</span></td><td>hot sessions、run status、retrieval/model cache、queue、locks、rate limits</td><td>TaskQueue、Session hot path、Workspace/Project live status、Runtime locks</td><td>带 TTL，可由 SQLite/JSONL 重建</td></tr>
+      <tr><td><strong>Milvus</strong></td><td><span class="tag purple">derived</span></td><td>turn、task、knowledge chunk、fact、context、skill/artifact embeddings</td><td>Retrieval、Context、Workspace Knowledge、Memory、Skill matcher、Project semantic search</td><td>同一 embedding 维度；来源行删除时级联删除向量</td></tr>
+      <tr><td><strong>Neo4j</strong></td><td><span class="tag purple">derived</span></td><td>task/run/change/knowledge/project/entity/capability/dependency relations</td><td>Workspace graph、Project ontology、Knowledge graph、Skill capability graph</td><td>当前为 graph projection / reserved backend，SQLite 是主要权威</td></tr>
+    </tbody></table></div>
+    <h3>数据库封箱边界</h3><div class="grid"><div class="card"><strong>Assembly</strong><p><code>create_storage(settings.storage)</code> 创建 <code>StorageBundle</code>，统一暴露 operational、knowledge、skills、sessions、metadata、observations、vectors、cache、blobs、memory、context、usage 等契约。</p></div><div class="card"><strong>Authority</strong><p>SQLite、JSONL、BlobStore 是可恢复的权威/证据层；Redis、Milvus、Neo4j 是可重建的派生层。项目数据库位于 <code>projects/{project_id}/</code>，不能由 Sprout runtime 状态冒充。</p></div><div class="card"><strong>Fan-out</strong><p><code>SixLaneFanout</code> 把 session/turn/fact/context 写入主存储后镜像到 FTS、Redis、Milvus、Neo4j；镜像失败应记录 lane error，不改变主权威数据。</p></div></div>
+  </section>
+  <div class="footer">报告依据当前工作区源码生成，关键来源：<code>runtime/factory.py</code>、<code>runtime/runtime.py</code>、<code>events/catalog.py</code>、<code>security/audit.py</code>、<code>cli/app.py</code>、<code>storage/plan.py</code>、<code>storage/topology.py</code>、<code>storage/bundle.py</code>。</div>
+</main>
+<script>
+  const input=document.getElementById('filter');
+  input.addEventListener('input',()=>{const q=input.value.trim().toLowerCase();document.querySelectorAll('.panel').forEach(p=>{p.style.display=!q||p.innerText.toLowerCase().includes(q)?'':'none'})});
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# Keep the build context to the Dockerfile and its requirements file: the
+# bind-mount state under volumes/ is Milvus's data directory (hundreds of MB)
+# and never belongs in an image build.
+volumes/
+__pycache__/
+*.py[cod]

@@ -1,0 +1,124 @@
+# Local six-lane test stack.
+#
+# All six lanes run together here: the three external lanes as services
+# (Redis / Milvus / Neo4j) plus the `sprout-app` runner, whose Sprout file
+# authorities live on `sprout-data` and user project ontology lives on
+# `project-data`. `sprout-app`
+# executes the repo's own code against all six — see `sprout storage check`
+# (Sprout/storage/lanediag.py) for the write-then-read-every-lane-back proof and
+# the `docker compose run` recipes below.
+#
+# Redis is mapped to 6380 so it never collides with the native Redis on 6379.
+# Images were pulled through the DaoCloud mirror and re-tagged, so the service
+# names below resolve to local tags without another registry round-trip.
+#
+#   ./bootstrap.ps1            # or ./bootstrap.sh — the one-command path
+#   docker compose -f ~/.sprout/docker/docker-compose.yml up -d --wait \
+#       sprout-redis sprout-neo4j sprout-milvus
+#   docker compose -f ~/.sprout/docker/docker-compose.yml run --rm -T sprout-app
+#
+# NOTE: `sprout storage check` writes at the production embedding width (1536).
+# The local-only test suite (src/Sprout/tests/, untracked) creates Sprout
+# vector collections at dim=64, and Milvus fixes the width at creation — so
+# run milvus_cleanup.py between the suite and the check, or whichever ran
+# first wins and the other fails on a dim mismatch.
+services:
+  sprout-redis:
+    image: redis:7-alpine
+    volumes:
+      - sprout-redis-data:/data
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  sprout-neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: neo4j/sprout123
+    volumes:
+      - sprout-neo4j-data:/data
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /var/lib/neo4j/bin/cypher-shell -u neo4j -p sprout123 'RETURN 1' >/dev/null 2>&1
+      interval: 10s
+      timeout: 10s
+      start_period: 40s
+      retries: 12
+
+  sprout-milvus:
+    image: milvusdb/milvus:v2.5.11
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      COMMON_STORAGETYPE: local
+    volumes:
+      - ./volumes/milvus:/var/lib/milvus
+      - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+
+  # The runner: the repo's code, all six lanes. Source is bind-mounted
+  # read-only, so this container never writes into the working tree. Sprout's
+  # own runtime authorities live on `sprout-data`; user project ontology lives
+  # on `project-data`, mounted at the `project_root` path below.
+  sprout-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    image: sprout-app:latest
+    working_dir: /data
+    # The command lives here, not in the image: the image only carries the
+    # dependencies, so moving the stack never requires a rebuild. It is the
+    # regular CLI verb - the source is on PYTHONPATH, so `python -m Sprout`
+    # reaches it without an installed console script.
+    command: ["python", "-m", "Sprout", "storage", "check"]
+    environment:
+      SPROUT_CONFIG: /app/docker/sprout.containers.toml
+      PYTHONPATH: /app/src
+      PYTHONDONTWRITEBYTECODE: "1"
+      # Env-gated live tests (the same variables the host uses), pointed at the
+      # compose network instead of localhost.
+      SPROUT_TEST_REDIS_URL: redis://sprout-redis:6379
+      SPROUT_TEST_MILVUS_URL: milvus://sprout-milvus:19530
+      SPROUT_TEST_NEO4J_URL: neo4j://sprout-neo4j:7687
+      SPROUT_TEST_NEO4J_USER: neo4j
+      SPROUT_TEST_NEO4J_PASSWORD: sprout123
+    volumes:
+      # Source comes from the repository root; Docker config comes from the
+      # generated `~/.sprout/docker` stack. Both are read-only.
+      - ${SPROUT_SOURCE_DIR:-.}:/app:ro
+      - ${HOME}/.sprout/docker:/app/docker:ro
+      - sprout-data:/data
+      - project-data:/data/projects
+    depends_on:
+      sprout-redis:
+        condition: service_healthy
+      sprout-neo4j:
+        condition: service_healthy
+      sprout-milvus:
+        condition: service_healthy
+
+volumes:
+  sprout-redis-data:
+  sprout-neo4j-data:
+  sprout-data:
+  project-data:

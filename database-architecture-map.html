@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SEAM Sprout 数据库架构图</title>
+  <style>
+    :root {
+      --bg: #f7f7f8;
+      --paper: #ffffff;
+      --ink: #1f2937;
+      --muted: #64748b;
+      --line: #d4d4d8;
+      --core: #7c3aed;
+      --fact: #2563eb;
+      --derived: #059669;
+      --graph: #0f766e;
+      --blob: #d97706;
+      --danger: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.55;
+    }
+    header {
+      padding: 36px 40px 24px;
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: 0; }
+    h2 { margin: 0 0 14px; font-size: 22px; }
+    h3 { margin: 0 0 10px; font-size: 17px; }
+    p { margin: 0; color: var(--muted); }
+    main { padding: 28px 40px 44px; max-width: 1440px; margin: 0 auto; }
+    section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      margin-bottom: 22px;
+    }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 16px; }
+    .legend span { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+    .version {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 5px 9px;
+      border-radius: 6px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #047857;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .grid.single { grid-template-columns: 1fr; }
+    .full { grid-column: 1 / -1; }
+    .diagram { width: 100%; overflow: auto; border: 1px solid #ececf0; border-radius: 8px; background: #fcfcfd; }
+    svg { display: block; min-width: 900px; width: 100%; height: auto; }
+    .node rect, .node path { stroke-width: 1.4; }
+    .node text { font-size: 13px; fill: var(--ink); }
+    .small text { font-size: 12px; }
+    .label { font-size: 12px; fill: var(--muted); }
+    .table-wrap { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #ececf0; padding: 9px 10px; text-align: left; vertical-align: top; }
+    th { color: #334155; background: #fafafa; font-weight: 650; }
+    code { background: #f1f5f9; padding: 2px 5px; border-radius: 4px; }
+    .pill { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); color: var(--muted); }
+    .authority { color: var(--fact); border-color: #bfdbfe; background: #eff6ff; }
+    .derived { color: var(--derived); border-color: #bbf7d0; background: #f0fdf4; }
+    .graph { color: var(--graph); border-color: #99f6e4; background: #f0fdfa; }
+    .object { color: var(--blob); border-color: #fed7aa; background: #fff7ed; }
+    .class-diagram {
+      padding: 16px;
+      min-width: 860px;
+      background: #fcfcfd;
+    }
+    .class-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .class-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .class-card {
+      border: 1.4px solid #60a5fa;
+      border-radius: 6px;
+      background: #ffffff;
+      overflow: hidden;
+      min-height: 128px;
+    }
+    .class-card.derived-card { border-color: #34d399; }
+    .class-card.graph-card { border-color: #14b8a6; }
+    .class-card.object-card { border-color: #f59e0b; }
+    .class-title {
+      padding: 8px 10px;
+      text-align: center;
+      font-weight: 700;
+      background: #eff6ff;
+      border-bottom: 1px solid #bfdbfe;
+    }
+    .derived-card .class-title { background: #f0fdf4; border-bottom-color: #bbf7d0; }
+    .graph-card .class-title { background: #f0fdfa; border-bottom-color: #99f6e4; }
+    .object-card .class-title { background: #fff7ed; border-bottom-color: #fed7aa; }
+    .class-part { padding: 8px 10px; border-bottom: 1px solid #eef2f7; }
+    .class-part:last-child { border-bottom: 0; }
+    .class-part div { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #334155; white-space: normal; overflow-wrap: anywhere; }
+    .relations {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 6px;
+      background: #f8fafc;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 14px;
+    }
+    .relations div {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #475569;
+    }
+    @media (max-width: 900px) {
+      header, main { padding-left: 18px; padding-right: 18px; }
+      .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SEAM Sprout 数据库架构图</h1>
+    <p>目标设计：项目拆分、agent 编码、验证、审批、知识沉淀和检索的统一数据层。</p>
+    <div class="version">v9：修正字段模板视图，并补全 Sprout 运行库与用户项目本体库字段</div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--fact)"></i>权威事实库</span>
+      <span><i class="dot" style="background:var(--blob)"></i>大对象 / 证据</span>
+      <span><i class="dot" style="background:var(--graph)"></i>跨域图谱层</span>
+      <span><i class="dot" style="background:var(--derived)"></i>派生能力，可重建</span>
+      <span><i class="dot" style="background:var(--core)"></i>服务入口</span>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>双平面桥接总览</h2>
+      <div class="class-diagram">
+        <div class="class-grid two">
+          <div class="class-card">
+            <div class="class-title">Sprout 自身运行库</div>
+            <div class="class-part">
+              <div>sprout_core.db</div>
+              <div>sprout_conversation.db</div>
+              <div>sprout_knowledge.db</div>
+              <div>sprout_audit.db</div>
+              <div>sprout_usage.db</div>
+            </div>
+            <div class="class-part">
+              <div>sprout_trajectory/*.jsonl</div>
+              <div>sprout_blobs/</div>
+              <div>sprout_redis</div>
+              <div>sprout_milvus</div>
+              <div>neo4j: Sprout labels</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">用户自己的项目库</div>
+            <div class="class-part">
+              <div>projects/{project_id}/project_manifest.db</div>
+              <div>projects/{project_id}/project_structure.db</div>
+              <div>projects/{project_id}/project_architecture.db</div>
+              <div>projects/{project_id}/project_database.db</div>
+              <div>projects/{project_id}/project_evolution.db</div>
+            </div>
+            <div class="class-part">
+              <div>projects/{project_id}/trajectory/*.jsonl</div>
+              <div>projects/{project_id}/blobs/</div>
+              <div>project redis key namespace</div>
+              <div>project milvus namespaces</div>
+              <div>neo4j: UserProject labels</div>
+            </div>
+          </div>
+        </div>
+        <div class="relations">
+          <div>sprout_core.Task -- targets --> project_manifest.Project</div><div>sprout_core.ExecutionRun -- operates_on --> project_structure.WorktreeSnapshot</div>
+          <div>sprout_core.ChangeSet -- changes --> project_structure.FileNode / SymbolNode</div><div>sprout_knowledge -- explains --> project_architecture / project_database</div>
+          <div>sprout_audit records operator/runtime actions</div><div>project_evolution records project-scoped changes and validation</div>
+          <div>Neo4j spans both layers with typed labels and bridge edges</div><div>Redis/Milvus keep separate namespaces per layer</div>
+        </div>
+        <p style="margin-top:12px">设计原则：所有库都按物理边界拆成两套，但 schema 不相同。<code>sprout_*</code> 记录这个 Sprout 项目自己如何运行；<code>projects/{project_id}/project_*</code> 记录用户项目本体，包括后端、前端、agent、skill、项目结构、数据库关系、数据库拆解和版本进化。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>大图 1：Sprout 自身运行库</h2>
+      <div class="class-diagram">
+        <div class="class-grid">
+          <div class="class-card">
+            <div class="class-title">入口与控制层</div>
+            <div class="class-part">
+              <div>Web / CLI / MCP / Gateway</div>
+              <div>Runtime / Web API</div>
+              <div>Storage Contracts</div>
+            </div>
+            <div class="class-part">
+              <div>只读写 sprout_* 运行库</div>
+              <div>通过 bridge 指向用户项目库</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">sprout_core.db</div>
+            <div class="class-part">
+              <div>Task / ExecutionRun / ExecutionStep</div>
+              <div>ChangeSet / FileChange / Validation</div>
+              <div>Artifact</div>
+            </div>
+            <div class="class-part">
+              <div>权威记录：Sprout 如何调度、执行、验证</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">sprout_conversation.db</div>
+            <div class="class-part">
+              <div>Session / Message / Attachment</div>
+              <div>MessageTaskLink</div>
+            </div>
+            <div class="class-part">
+              <div>权威记录：用户与 Sprout 的控制会话</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">sprout_knowledge.db</div>
+            <div class="class-part">
+              <div>KnowledgeItem / MemoryFact</div>
+              <div>KnowledgeEvidence / KnowledgeLink</div>
+              <div>KnowledgeFTS</div>
+            </div>
+            <div class="class-part">
+              <div>权威记录：Sprout 自身能力、策略、经验</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">sprout_audit.db</div>
+            <div class="class-part">
+              <div>Approval / SecurityEvent</div>
+              <div>WebRequest / OperationLog</div>
+            </div>
+            <div class="class-part">
+              <div>权威记录：审批、安全、平台级审计</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">sprout_usage.db</div>
+            <div class="class-part">
+              <div>ModelCall / ToolUsage</div>
+              <div>cost / latency / token</div>
+            </div>
+            <div class="class-part">
+              <div>权威记录：Sprout 运行成本和性能</div>
+            </div>
+          </div>
+          <div class="class-card object-card">
+            <div class="class-title">sprout_trajectory / sprout_blobs</div>
+            <div class="class-part">
+              <div>trajectory/*.jsonl</div>
+              <div>logs / diff / attachments / artifacts</div>
+            </div>
+            <div class="class-part">
+              <div>大对象和 replay 证据，不直接进 SQLite</div>
+            </div>
+          </div>
+          <div class="class-card derived-card">
+            <div class="class-title">sprout_redis / sprout_milvus</div>
+            <div class="class-part">
+              <div>sprout:queue / sprout:lock / sprout:run</div>
+              <div>sprout_vec_messages / sprout_vec_tasks</div>
+            </div>
+            <div class="class-part">
+              <div>缓存、锁、实时状态、可重建向量</div>
+            </div>
+          </div>
+          <div class="class-card graph-card">
+            <div class="class-title">Neo4j Sprout Labels</div>
+            <div class="class-part">
+              <div>SproutRuntime / Agent / Tool</div>
+              <div>Capability / Task / Run / Approval</div>
+            </div>
+            <div class="class-part">
+              <div>跨任务、工具、能力、审批的运行图谱</div>
+            </div>
+          </div>
+        </div>
+        <div class="relations">
+          <div>Runtime writes facts to sprout_core / sprout_conversation / sprout_audit / sprout_usage</div><div>Runtime writes large evidence to sprout_trajectory and sprout_blobs</div>
+          <div>Fanout builds sprout_redis and sprout_milvus from authoritative facts</div><div>Neo4j Sprout labels connect agents, tools, capabilities, tasks, runs and approvals</div>
+          <div>sprout_core.Task targets user project entities by stable bridge ids</div><div>Sprout libraries do not store user project structure as their own schema</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>大图 2：用户项目本体库</h2>
+      <div class="class-diagram">
+        <div class="class-grid">
+          <div class="class-card">
+            <div class="class-title">project_manifest.db</div>
+            <div class="class-part">
+              <div>Project / ProjectComponent</div>
+              <div>RuntimeProfile / EntryPoint</div>
+              <div>ExternalService / ProjectTag</div>
+            </div>
+            <div class="class-part">
+              <div>后端、前端、agent、skill、infra 的身份和入口</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">project_structure.db</div>
+            <div class="class-part">
+              <div>WorktreeSnapshot / DirectoryNode</div>
+              <div>FileNode / SymbolNode</div>
+              <div>Dependency / CodeRelation</div>
+            </div>
+            <div class="class-part">
+              <div>每个版本的代码结构、文件、符号、依赖</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">project_architecture.db</div>
+            <div class="class-part">
+              <div>ModuleBoundary / ModuleFileMap</div>
+              <div>InterfaceSurface / InterfaceEndpoint</div>
+              <div>InterfaceSchema / InterfaceImplementation</div>
+              <div>InterfaceCall / DataFlow</div>
+              <div>AgentContract / SkillContract</div>
+            </div>
+            <div class="class-part">
+              <div>模块边界、接口定义、实现位置、调用关系、agent/skill 合约</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">project_database.db</div>
+            <div class="class-part">
+              <div>DataSource / SchemaVersion</div>
+              <div>DatabaseTable / DatabaseColumn</div>
+              <div>DatabaseRelation / DatabaseSplitPlan</div>
+              <div>SplitMapping / MigrationStep</div>
+            </div>
+            <div class="class-part">
+              <div>数据库结构、表字段关系、拆库、迁移、权威归属</div>
+            </div>
+          </div>
+          <div class="class-card">
+            <div class="class-title">project_evolution.db</div>
+            <div class="class-part">
+              <div>ProjectVersion / ArchitectureDecision</div>
+              <div>EvolutionChangeSet / ChangeImpact</div>
+              <div>ValidationResult / DecompositionPlan</div>
+            </div>
+            <div class="class-part">
+              <div>版本快照、架构决策、变更影响、验证结果</div>
+            </div>
+          </div>
+          <div class="class-card object-card">
+            <div class="class-title">project evidence</div>
+            <div class="class-part">
+              <div>projects/{id}/trajectory/*.jsonl</div>
+              <div>projects/{id}/blobs/</div>
+            </div>
+            <div class="class-part">
+              <div>扫描、分析、拆解、迁移、验证的原始证据</div>
+            </div>
+          </div>
+          <div class="class-card derived-card">
+            <div class="class-title">project redis / milvus</div>
+            <div class="class-part">
+              <div>project:{id}:queue / lock / context</div>
+              <div>project_{id}_vec_manifest</div>
+              <div>project_{id}_vec_structure / database / evolution</div>
+            </div>
+            <div class="class-part">
+              <div>项目级缓存、锁、上下文和语义检索</div>
+            </div>
+          </div>
+          <div class="class-card graph-card">
+            <div class="class-title">Neo4j UserProject Labels</div>
+            <div class="class-part">
+              <div>UserProject / UserComponent / UserModule</div>
+              <div>UserFile / UserSymbol / UserDataSource</div>
+              <div>UserTable / UserVersion</div>
+            </div>
+            <div class="class-part">
+              <div>跨库关系、影响路径、依赖路径、演进路径</div>
+            </div>
+          </div>
+          <div class="class-card graph-card">
+            <div class="class-title">Bridge To Sprout</div>
+            <div class="class-part">
+              <div>Sprout Task -> Project / Component</div>
+              <div>Sprout ChangeSet -> File / Table</div>
+              <div>Sprout Knowledge -> Architecture / Database</div>
+            </div>
+            <div class="class-part">
+              <div>桥接只保存引用，不把用户项目结构塞进 sprout_*</div>
+            </div>
+          </div>
+        </div>
+        <div class="relations">
+          <div>Project 1 -- * ProjectComponent : backend/frontend/agent/skill/infra</div><div>ProjectComponent 1 -- * FileNode and ModuleBoundary</div>
+          <div>WorktreeSnapshot 1 -- * DirectoryNode/FileNode/SymbolNode</div><div>ModuleBoundary * -- * FileNode through ModuleFileMap</div>
+          <div>ProjectComponent 1 -- * DataSource</div><div>DataSource 1 -- * SchemaVersion -- * DatabaseTable -- * DatabaseColumn</div>
+          <div>DatabaseTable * -- * DatabaseTable through DatabaseRelation</div><div>DatabaseSplitPlan maps tables to target data sources through SplitMapping</div>
+              <div>ProjectVersion snapshots WorktreeSnapshot, schema versions and interface versions</div><div>EvolutionChangeSet impacts files, modules, interfaces, tables and columns</div>
+          <div>Neo4j materializes cross-db graph paths; SQLite remains the authoritative storage</div><div>Milvus vectors are rebuildable from project_* SQLite and project blobs</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>字段模板视图：两套 schema，两种职责</h2>
+      <p style="margin-bottom:12px">这张图只表达字段模板，不表达运行流。左边是 Sprout 自身运行 schema；右边是用户项目本体 schema。两套 schema 不共享表结构，只通过 bridge id、Neo4j 边和证据 URI 关联。</p>
+      <div class="diagram">
+        <div class="class-diagram">
+          <div class="class-grid two">
+            <div class="class-card">
+              <div class="class-title">Sprout 自身运行 schema</div>
+              <div class="class-part">
+                <div>sprout_core.Task(id, title, instruction, status, priority, actor_json, target_ref_type, target_ref_id, context_snapshot_id, created_at, completed_at)</div>
+                <div>sprout_core.ExecutionRun(id, task_id, agent_name, model, sandbox_id, status, result_json, error, started_at, ended_at)</div>
+                <div>sprout_core.ExecutionStep(id, run_id, seq, kind, status, input_json, output_json, tool_calls_json, duration_ms)</div>
+              </div>
+              <div class="class-part">
+                <div>sprout_conversation.Session(id, user_id, channel, title, status, metadata_json, created_at, updated_at)</div>
+                <div>sprout_conversation.Message(id, session_id, seq, role, content, content_blob_uri, token_estimate, metadata_json)</div>
+                <div>sprout_knowledge.KnowledgeItem(id, kind, title, content, evidence_json, confidence, version, status)</div>
+              </div>
+              <div class="class-part">
+                <div>sprout_audit.Approval(id, task_id, tool, status, resource_scope, action_hash, expires_at, used_at)</div>
+                <div>sprout_usage.ModelCall(id, provider, model, task_id, run_id, input_tokens, output_tokens, latency_ms, cost_usd)</div>
+                <div>sprout_trajectory / sprout_blobs / sprout_redis / sprout_milvus are evidence or derived indexes</div>
+              </div>
+            </div>
+            <div class="class-card">
+              <div class="class-title">用户项目本体 schema</div>
+              <div class="class-part">
+                <div>project_manifest.Project(id, name, root_path, repo_url, product_type, owner, status, created_at, updated_at)</div>
+                <div>project_manifest.ProjectComponent(id, project_id, name, component_type, root_path, runtime, framework, status)</div>
+                <div>project_structure.WorktreeSnapshot(id, project_id, git_revision, branch, scan_status, scanned_at, scanner_version)</div>
+              </div>
+              <div class="class-part">
+                <div>project_architecture.InterfaceSurface(id, component_id, module_id, name, interface_type, visibility, lifecycle_status)</div>
+                <div>project_architecture.InterfaceEndpoint(id, interface_id, method, path_or_name, operation_id, auth_policy, stability, deprecated_at)</div>
+                <div>project_architecture.InterfaceSchema(id, endpoint_id, schema_kind, direction, schema_json, schema_blob_uri, schema_hash)</div>
+              </div>
+              <div class="class-part">
+                <div>project_database.DataSource(id, project_id, component_id, name, engine, authority_level, connection_ref, lifecycle_status)</div>
+                <div>project_database.DatabaseTable(id, schema_version_id, name, table_type, domain, authority_role, owner_component_id)</div>
+                <div>project_evolution.ProjectVersion(id, project_id, version_name, git_revision, snapshot_id, schema_version_set_json, interface_version_set_json)</div>
+              </div>
+            </div>
+          </div>
+          <div class="relations">
+            <div>Sprout Task target_ref_id points to Project / Component / File / Table / Interface records</div><div>Sprout ChangeSet maps to project_evolution.EvolutionChangeSet</div>
+            <div>InterfaceImplementation links endpoints back to FileNode and SymbolNode</div><div>DataAccessPoint links DatabaseTable usage back to FileNode and SymbolNode</div>
+            <div>Neo4j materializes cross-schema paths; SQLite remains authoritative</div><div>Blob URI stores large schemas, diffs, logs and evidence without duplicating table rows</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>库职责一览</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>库类型</th><th>Sprout 自身运行库</th><th>用户项目库</th><th>关系</th></tr></thead>
+          <tbody>
+            <tr><td>运行控制</td><td><code>sprout_core.db</code><br>Sprout 任务、运行、工具调用、变更、验证</td><td><code>project_manifest.db</code><br>用户项目身份、类型、组件、入口、仓库、环境</td><td>Sprout task target 到 Project / Component / Snapshot</td></tr>
+            <tr><td>对话与需求</td><td><code>sprout_conversation.db</code><br>用户与 Sprout 的控制会话</td><td><code>project_manifest.db</code> + <code>project_evolution.db</code><br>需求、决策、版本目标、变更原因</td><td>会话消息产生项目版本计划或拆解方案</td></tr>
+            <tr><td>知识与结构</td><td><code>sprout_knowledge.db</code><br>Sprout 自身能力、策略、运行经验</td><td><code>project_structure.db</code> + <code>project_architecture.db</code><br>目录、文件、符号、依赖、接口、模块关系</td><td>Sprout 知识解释如何操作；用户项目库描述项目本身</td></tr>
+            <tr><td>数据库设计</td><td><code>sprout_audit.db</code><br>平台级审批、安全、HTTP 审计</td><td><code>project_database.db</code><br>数据源、schema、表、字段、关系、迁移、拆解方案</td><td>数据库拆解是用户项目事实，不放 Sprout 运行库</td></tr>
+            <tr><td>版本演进</td><td><code>sprout_usage.db</code><br>平台级模型/工具成本</td><td><code>project_evolution.db</code><br>版本快照、架构决策、变更集、验证结果、迁移历史</td><td>Sprout usage 统计成本；project evolution 记录项目如何变化</td></tr>
+            <tr><td>JSONL</td><td><code>sprout_trajectory/*.jsonl</code><br>Sprout 自身运行轨迹</td><td><code>projects/{id}/trajectory/*.jsonl</code><br>用户项目扫描、分析、拆解、迁移证据</td><td>Sprout 轨迹记录调度，project 轨迹记录项目事实生成过程</td></tr>
+            <tr><td>Blob</td><td><code>sprout_blobs/</code><br>平台日志、系统 artifact</td><td><code>projects/{id}/blobs/</code><br>diff、测试日志、附件、项目 artifact</td><td>Blob URI 不跨平面复用，避免权限混淆</td></tr>
+            <tr><td>Redis</td><td><code>sprout:*</code><br>平台队列、锁、实时状态</td><td><code>project:{id}:*</code><br>项目队列、锁、上下文缓存</td><td><span class="pill derived">派生/实时</span></td></tr>
+            <tr><td>Neo4j</td><td><code>Sprout*</code> labels<br>Agent、Tool、Capability、Run、Approval</td><td><code>User*</code> labels<br>Project、Component、Module、File、Symbol、DataSource、Table、Version</td><td><span class="pill graph">同一个跨域图谱层，用桥接边连接</span></td></tr>
+            <tr><td>Milvus</td><td><code>sprout_vec_*</code><br>Sprout 文档、任务、经验向量</td><td><code>project_{id}_vec_*</code><br>项目结构、架构、数据库、版本决策向量</td><td><span class="pill derived">派生/可重建</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="grid single">
+      <section>
+        <h2>用户项目库总关系</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card"><div class="class-title">project_manifest.db</div><div class="class-part"><div>项目身份 / 类型 / 组件</div><div>后端、前端、agent、skill</div></div></div>
+              <div class="class-card"><div class="class-title">project_structure.db</div><div class="class-part"><div>目录 / 文件 / 符号 / 依赖</div><div>每个版本的代码结构快照</div></div></div>
+              <div class="class-card"><div class="class-title">project_architecture.db</div><div class="class-part"><div>模块 / API / 流程 / 边界</div><div>组件之间如何协作</div></div></div>
+              <div class="class-card"><div class="class-title">project_database.db</div><div class="class-part"><div>数据源 / 表 / 字段 / 关系</div><div>拆库、迁移、权威归属</div></div></div>
+              <div class="class-card"><div class="class-title">project_evolution.db</div><div class="class-part"><div>版本 / 决策 / 变更 / 验证</div><div>项目结构如何演进</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">Neo4j UserProject</div><div class="class-part"><div>跨库图关系</div><div>影响路径、依赖路径、演进路径</div></div></div>
+            </div>
+            <div class="relations">
+              <div>Project 1 -- * ProjectComponent</div><div>ProjectVersion 1 -- * WorktreeSnapshot</div>
+              <div>Component 1 -- * ModuleBoundary</div><div>Component 1 -- * DataSource</div>
+              <div>SchemaVersion 1 -- * DatabaseTable</div><div>EvolutionChangeSet * -- * FileNode / DatabaseTable</div>
+              <div>ArchitectureDecision explains DatabaseSplitPlan</div><div>Neo4j materializes cross-db graph paths</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>project_manifest.db：用户项目身份与组件</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card"><div class="class-title">Project</div><div class="class-part"><div>+ id: text PK</div><div>+ name: text</div><div>+ display_name: text?</div><div>+ root_path: text</div><div>+ repo_url: text?</div><div>+ default_branch: text?</div></div><div class="class-part"><div>+ product_type: app|library|agent_system|skill_pack|mixed</div><div>+ owner: text?</div><div>+ status: active|archived|scanning|error</div><div>+ current_version_id: FK?</div><div>+ metadata_json</div><div>+ created_at / updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">ProjectComponent</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ name: text</div><div>+ component_type: backend|frontend|agent|skill|infra|docs</div><div>+ root_path: text</div></div><div class="class-part"><div>+ runtime: node|python|go|rust|browser|mixed</div><div>+ framework: text?</div><div>+ package_manifest_path: text?</div><div>+ owner_team: text?</div><div>+ lifecycle_status</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">RuntimeProfile</div><div class="class-part"><div>+ id: text PK</div><div>+ component_id: FK</div><div>+ language: text</div><div>+ language_version: text?</div><div>+ package_manager: text?</div></div><div class="class-part"><div>+ install_command: text?</div><div>+ build_command: text?</div><div>+ test_command: text?</div><div>+ start_command: text?</div><div>+ env_schema_json</div><div>+ ports_json</div></div></div>
+              <div class="class-card"><div class="class-title">EntryPoint</div><div class="class-part"><div>+ id: text PK</div><div>+ component_id: FK</div><div>+ kind: app|route|cli|agent|skill|worker|test</div><div>+ path: text</div></div><div class="class-part"><div>+ symbol_id: structure FK?</div><div>+ route: text?</div><div>+ command: text?</div><div>+ is_primary: bool</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">ExternalService</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ owner_component_id: FK?</div><div>+ name: text</div><div>+ service_type: api|db|queue|auth|storage|model</div></div><div class="class-part"><div>+ endpoint: text?</div><div>+ auth_type: none|api_key|oauth|iam|unknown</div><div>+ config_ref: text?</div><div>+ risk_level</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">ProjectTag</div><div class="class-part"><div>+ project_id: FK</div><div>+ key: text</div><div>+ value: text</div></div><div class="class-part"><div>+ category: domain|tenant|risk|lifecycle|custom</div><div>+ source: scan|user|agent</div><div>+ created_at</div></div></div>
+            </div>
+            <div class="relations">
+              <div>Project 1 -- * ProjectComponent</div><div>ProjectComponent 1 -- * RuntimeProfile</div>
+              <div>ProjectComponent 1 -- * EntryPoint</div><div>Project 1 -- * ExternalService</div>
+              <div>ExternalService 0..1 -- 1 ProjectComponent : owned_by</div><div>Project 1 -- * ProjectTag</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>project_structure.db：代码结构、文件与依赖</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card"><div class="class-title">WorktreeSnapshot</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ git_revision: text</div><div>+ branch: text?</div><div>+ base_revision: text?</div></div><div class="class-part"><div>+ scan_status: pending|running|complete|error</div><div>+ scanned_at</div><div>+ scanner_version</div><div>+ file_count / symbol_count</div><div>+ error_blob_uri?</div></div></div>
+              <div class="class-card"><div class="class-title">DirectoryNode</div><div class="class-part"><div>+ id: text PK</div><div>+ snapshot_id: FK</div><div>+ parent_id: FK?</div><div>+ path: text</div><div>+ depth: int</div></div><div class="class-part"><div>+ role: source|test|config|docs|build|asset</div><div>+ component_id: FK?</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">FileNode</div><div class="class-part"><div>+ id: text PK</div><div>+ snapshot_id: FK</div><div>+ component_id: FK?</div><div>+ directory_id: FK</div><div>+ path: text</div></div><div class="class-part"><div>+ language: text?</div><div>+ file_role: source|test|config|schema|asset|doc</div><div>+ content_hash</div><div>+ size_bytes</div><div>+ lines</div><div>+ blob_uri?</div></div></div>
+              <div class="class-card"><div class="class-title">SymbolNode</div><div class="class-part"><div>+ id: text PK</div><div>+ file_id: FK</div><div>+ parent_symbol_id: FK?</div><div>+ name: text</div><div>+ qualified_name: text</div></div><div class="class-part"><div>+ kind: class|function|method|var|route|schema|tool</div><div>+ signature</div><div>+ visibility</div><div>+ start_line / end_line</div><div>+ docstring_blob_uri?</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">Dependency</div><div class="class-part"><div>+ id: text PK</div><div>+ component_id: FK</div><div>+ source_file_id: FK?</div><div>+ name: text</div><div>+ version: text?</div></div><div class="class-part"><div>+ dependency_type: package|import|service|tool|plugin</div><div>+ scope: runtime|dev|test|peer|optional</div><div>+ source: manifest|import|config|scan</div><div>+ license?</div><div>+ risk_json</div></div></div>
+              <div class="class-card"><div class="class-title">CodeRelation</div><div class="class-part"><div>+ id: text PK</div><div>+ source_symbol_id: FK</div><div>+ target_symbol_id: FK?</div><div>+ target_dependency_id: FK?</div><div>+ target_file_id: FK?</div></div><div class="class-part"><div>+ relation_type: calls|imports|extends|implements|emits|reads|writes</div><div>+ confidence: float</div><div>+ evidence_span_json</div><div>+ created_at</div></div></div>
+            </div>
+            <div class="relations">
+              <div>WorktreeSnapshot 1 -- * DirectoryNode</div><div>DirectoryNode 1 -- * FileNode</div>
+              <div>ProjectComponent 1 -- * FileNode</div><div>FileNode 1 -- * SymbolNode</div>
+              <div>ProjectComponent 1 -- * Dependency</div><div>SymbolNode * -- * SymbolNode : CodeRelation</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>project_architecture.db：模块、接口与组件关系</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card"><div class="class-title">ModuleBoundary</div><div class="class-part"><div>+ id: text PK</div><div>+ component_id: FK</div><div>+ name: text</div><div>+ layer: ui|api|domain|data|agent|skill|infra</div></div><div class="class-part"><div>+ responsibility</div><div>+ stability: experimental|stable|deprecated</div><div>+ owner</div><div>+ boundary_rules_json</div><div>+ created_at / updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">ModuleFileMap</div><div class="class-part"><div>+ module_id: FK</div><div>+ file_id: structure FK</div></div><div class="class-part"><div>+ role: primary|adapter|test|config|schema|generated</div><div>+ confidence: float</div><div>+ source: scan|manual|agent</div></div></div>
+              <div class="class-card"><div class="class-title">InterfaceSurface</div><div class="class-part"><div>+ id: text PK</div><div>+ component_id: FK</div><div>+ module_id: FK?</div><div>+ name: text</div><div>+ interface_type: REST|GraphQL|RPC|CLI|Tool|Agent|Skill|Event</div></div><div class="class-part"><div>+ visibility: public|internal|private</div><div>+ lifecycle_status: active|deprecated|removed</div><div>+ description</div><div>+ source: scan|openapi|manual|agent</div><div>+ created_at / updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">InterfaceEndpoint</div><div class="class-part"><div>+ id: text PK</div><div>+ interface_id: FK</div><div>+ method: GET|POST|RPC|CLI|TOOL|EVENT</div><div>+ path_or_name: text</div><div>+ operation_id: text?</div></div><div class="class-part"><div>+ auth_policy</div><div>+ rate_limit_policy?</div><div>+ stability: experimental|stable|deprecated</div><div>+ deprecated_at?</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">InterfaceSchema</div><div class="class-part"><div>+ id: text PK</div><div>+ endpoint_id: FK</div><div>+ schema_kind: json_schema|openapi|graphql|protobuf|typescript</div><div>+ direction: request|response|event|tool_input|tool_output</div></div><div class="class-part"><div>+ content_type</div><div>+ schema_json</div><div>+ schema_blob_uri?</div><div>+ schema_hash</div><div>+ example_blob_uri?</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">InterfaceImplementation</div><div class="class-part"><div>+ id: text PK</div><div>+ endpoint_id: FK</div><div>+ file_id: structure FK</div><div>+ symbol_id: structure FK?</div></div><div class="class-part"><div>+ framework_binding</div><div>+ handler_kind: controller|route|resolver|command|tool|event_handler</div><div>+ line_range_json</div><div>+ confidence</div><div>+ evidence_blob_uri?</div></div></div>
+              <div class="class-card"><div class="class-title">InterfaceCall</div><div class="class-part"><div>+ id: text PK</div><div>+ caller_component_id: FK?</div><div>+ caller_file_id: structure FK</div><div>+ caller_symbol_id: structure FK?</div><div>+ target_endpoint_id: FK?</div></div><div class="class-part"><div>+ call_type: http|import|rpc|tool_call|event|cli</div><div>+ request_shape_hash?</div><div>+ confidence: float</div><div>+ evidence_blob_uri?</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">InterfaceVersion</div><div class="class-part"><div>+ id: text PK</div><div>+ interface_id: FK</div><div>+ version: text</div><div>+ introduced_in_version_id: FK?</div><div>+ removed_in_version_id: FK?</div></div><div class="class-part"><div>+ schema_hash</div><div>+ breaking_change: bool</div><div>+ changelog</div><div>+ migration_notes_blob_uri?</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">DataFlow</div><div class="class-part"><div>+ id: text PK</div><div>+ source_component_id: FK</div><div>+ target_component_id: FK?</div><div>+ interface_id: FK?</div><div>+ data_source_id: database FK?</div></div><div class="class-part"><div>+ medium: http|db|queue|file|tool_call|event</div><div>+ payload_schema_id: FK?</div><div>+ direction</div><div>+ sync_mode: sync|async|batch</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">AgentContract</div><div class="class-part"><div>+ id: text PK</div><div>+ component_id: FK</div><div>+ agent_name: text</div><div>+ role: text</div><div>+ interface_id: FK?</div></div><div class="class-part"><div>+ tool_surface_json</div><div>+ memory_policy_json</div><div>+ guardrail_json</div><div>+ model_policy_json</div><div>+ lifecycle_status</div></div></div>
+              <div class="class-card"><div class="class-title">SkillContract</div><div class="class-part"><div>+ id: text PK</div><div>+ component_id: FK</div><div>+ skill_name: text</div><div>+ trigger_scope: text</div><div>+ interface_id: FK?</div></div><div class="class-part"><div>+ inputs_json</div><div>+ outputs_json</div><div>+ dependencies_json</div><div>+ side_effects_json</div><div>+ lifecycle_status</div></div></div>
+            </div>
+            <div class="relations">
+              <div>ProjectComponent 1 -- * ModuleBoundary</div><div>ModuleBoundary * -- * FileNode : ModuleFileMap</div>
+              <div>ProjectComponent 1 -- * InterfaceSurface</div><div>InterfaceSurface 1 -- * InterfaceEndpoint</div>
+              <div>InterfaceEndpoint 1 -- * InterfaceSchema</div><div>InterfaceEndpoint 1 -- * InterfaceImplementation</div>
+              <div>InterfaceCall * -- 0..1 InterfaceEndpoint</div><div>InterfaceSurface 1 -- * InterfaceVersion</div>
+              <div>DataFlow may point to InterfaceSurface or DatabaseTable</div><div>agent/skill components expose AgentContract and SkillContract as specialized interfaces</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>project_database.db：数据库结构、关系与拆解</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card"><div class="class-title">DataSource</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ component_id: FK?</div><div>+ name: text</div><div>+ engine: sqlite|postgres|mysql|redis|neo4j|milvus|jsonl|blob</div></div><div class="class-part"><div>+ authority_level: authoritative|cache|projection|external</div><div>+ connection_ref: text?</div><div>+ config_file_id: structure FK?</div><div>+ lifecycle_status</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">SchemaVersion</div><div class="class-part"><div>+ id: text PK</div><div>+ data_source_id: FK</div><div>+ version: text</div><div>+ revision: text?</div><div>+ project_version_id: FK?</div></div><div class="class-part"><div>+ ddl_hash</div><div>+ schema_blob_uri?</div><div>+ migration_id?</div><div>+ captured_at</div><div>+ captured_by</div></div></div>
+              <div class="class-card"><div class="class-title">DatabaseTable</div><div class="class-part"><div>+ id: text PK</div><div>+ schema_version_id: FK</div><div>+ name: text</div><div>+ table_type: table|view|collection|stream|keyspace</div></div><div class="class-part"><div>+ domain</div><div>+ authority_role: write_model|read_model|event_log|lookup|cache</div><div>+ owner_component_id: FK?</div><div>+ estimated_rows?</div><div>+ retention_policy?</div></div></div>
+              <div class="class-card"><div class="class-title">DatabaseColumn</div><div class="class-part"><div>+ id: text PK</div><div>+ table_id: FK</div><div>+ name: text</div><div>+ ordinal: int</div><div>+ data_type: text</div></div><div class="class-part"><div>+ nullable: bool</div><div>+ default_value?</div><div>+ is_primary_key / is_unique / is_indexed</div><div>+ pii_level</div><div>+ semantic_role</div><div>+ description</div></div></div>
+              <div class="class-card"><div class="class-title">DatabaseRelation</div><div class="class-part"><div>+ id: text PK</div><div>+ source_table_id: FK</div><div>+ source_column_id: FK?</div><div>+ target_table_id: FK</div><div>+ target_column_id: FK?</div></div><div class="class-part"><div>+ relation_type: fk|m2m|read_model|event|lookup|denormalized</div><div>+ cardinality</div><div>+ constraint_name?</div><div>+ confidence</div><div>+ evidence_blob_uri?</div></div></div>
+              <div class="class-card"><div class="class-title">DatabaseSplitPlan</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ source_data_source_id: FK</div><div>+ target_topology_json</div></div><div class="class-part"><div>+ reason</div><div>+ strategy: domain|bounded_context|read_write|tenant|performance</div><div>+ status: draft|approved|running|done|rejected</div><div>+ owner_decision_id: evolution FK?</div><div>+ risk_json</div><div>+ created_at / updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">SplitMapping</div><div class="class-part"><div>+ split_plan_id: FK</div><div>+ source_table_id: FK</div><div>+ target_data_source_id: FK</div><div>+ target_table_name</div></div><div class="class-part"><div>+ ownership: source_of_truth|replica|read_model|archive</div><div>+ migration_order: int</div><div>+ sync_strategy: cutover|dual_write|cdc|backfill</div><div>+ notes</div></div></div>
+              <div class="class-card"><div class="class-title">MigrationStep</div><div class="class-part"><div>+ id: text PK</div><div>+ schema_version_id: FK</div><div>+ split_plan_id: FK?</div><div>+ step_order: int</div><div>+ operation: create|alter|copy|backfill|validate|cutover|rollback</div></div><div class="class-part"><div>+ script_blob_uri</div><div>+ rollback_blob_uri</div><div>+ validation_query</div><div>+ expected_result_json</div><div>+ status</div></div></div>
+              <div class="class-card"><div class="class-title">DataAccessPoint</div><div class="class-part"><div>+ id: text PK</div><div>+ table_id: FK</div><div>+ column_id: FK?</div><div>+ file_id: structure FK</div><div>+ symbol_id: structure FK?</div></div><div class="class-part"><div>+ access_type: read|write|delete|migrate|seed</div><div>+ query_fingerprint</div><div>+ query_blob_uri?</div><div>+ confidence</div><div>+ created_at</div></div></div>
+            </div>
+            <div class="relations">
+              <div>DataSource 1 -- * SchemaVersion</div><div>SchemaVersion 1 -- * DatabaseTable</div>
+              <div>DatabaseTable 1 -- * DatabaseColumn</div><div>DatabaseTable * -- * DatabaseTable : DatabaseRelation</div>
+              <div>DatabaseSplitPlan 1 -- * SplitMapping</div><div>SplitMapping maps table ownership to target data sources</div>
+              <div>SchemaVersion 1 -- * MigrationStep</div><div>DataAccessPoint links table/column usage back to code symbols</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>project_evolution.db：版本进化、决策与验证</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card"><div class="class-title">ProjectVersion</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ version_name: text</div><div>+ semantic_version?</div><div>+ git_revision: text</div></div><div class="class-part"><div>+ snapshot_id: structure FK</div><div>+ schema_version_set_json</div><div>+ interface_version_set_json</div><div>+ release_notes_blob_uri?</div><div>+ created_at / created_by</div></div></div>
+              <div class="class-card"><div class="class-title">ArchitectureDecision</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ version_id: FK?</div><div>+ title: text</div><div>+ decision_type</div></div><div class="class-part"><div>+ context</div><div>+ options_json</div><div>+ decision</div><div>+ consequences</div><div>+ status: proposed|accepted|superseded|rejected</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">EvolutionChangeSet</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ from_version_id: FK?</div><div>+ to_version_id: FK?</div><div>+ sprout_change_set_id: FK?</div></div><div class="class-part"><div>+ change_type: feature|refactor|migration|split|fix|docs</div><div>+ summary</div><div>+ rationale</div><div>+ diff_blob_uri?</div><div>+ status</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">ChangeImpact</div><div class="class-part"><div>+ id: text PK</div><div>+ change_set_id: FK</div><div>+ target_type: file|module|interface|table|column|flow|component</div><div>+ target_id: text</div></div><div class="class-part"><div>+ impact_level: low|medium|high|breaking</div><div>+ reason</div><div>+ mitigation</div><div>+ confidence</div><div>+ evidence_blob_uri?</div></div></div>
+              <div class="class-card"><div class="class-title">ValidationResult</div><div class="class-part"><div>+ id: text PK</div><div>+ change_set_id: FK</div><div>+ validator: text</div><div>+ validation_type: test|build|lint|migration|contract</div><div>+ status: pass|fail|skip|error</div></div><div class="class-part"><div>+ command</div><div>+ exit_code</div><div>+ output_blob_uri</div><div>+ duration_ms</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">DecompositionPlan</div><div class="class-part"><div>+ id: text PK</div><div>+ project_id: FK</div><div>+ target_version_id: FK?</div><div>+ decomposition_type: module|service|database|skill|agent</div></div><div class="class-part"><div>+ plan_json</div><div>+ boundary_json</div><div>+ dependency_cut_json</div><div>+ status: draft|approved|running|done</div><div>+ owner_task_id: sprout FK?</div><div>+ created_at / updated_at</div></div></div>
+            </div>
+            <div class="relations">
+              <div>Project 1 -- * ProjectVersion</div><div>ProjectVersion 1 -- 1 WorktreeSnapshot</div>
+              <div>ArchitectureDecision explains ModuleBoundary / DataFlow / DatabaseSplitPlan</div><div>EvolutionChangeSet * -- * impacted targets : ChangeImpact</div>
+              <div>EvolutionChangeSet 1 -- * ValidationResult</div><div>DecompositionPlan may produce EvolutionChangeSet and DatabaseSplitPlan</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Sprout Core 字段模板：sprout_core.db</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card"><div class="class-title">RuntimeWorkspace</div><div class="class-part"><div>+ id: text PK</div><div>+ root_path: text</div><div>+ sprout_version: text</div><div>+ config_hash: text</div><div>+ active_profile: text?</div></div><div class="class-part"><div>+ status: ready|degraded|migrating|error</div><div>+ data_root: text</div><div>+ created_at / updated_at</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">TargetRef</div><div class="class-part"><div>+ id: text PK</div><div>+ target_layer: sprout|project</div><div>+ project_id: text?</div><div>+ ref_type: Project|Component|File|Symbol|Table|Interface</div></div><div class="class-part"><div>+ ref_id: text</div><div>+ display_name</div><div>+ last_seen_version_id?</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">Task</div><div class="class-part"><div>+ id: text PK</div><div>+ workspace_id: FK</div><div>+ target_ref_id: FK?</div><div>+ parent_task_id: FK?</div><div>+ title</div><div>+ instruction</div></div><div class="class-part"><div>+ source / status / priority</div><div>+ task_type</div><div>+ actor_json</div><div>+ delegation_scope_json</div><div>+ budget_json</div><div>+ context_snapshot_id</div><div>+ result_summary / error_summary</div><div>+ metadata_json</div><div>+ created_at / updated_at / completed_at</div></div></div>
+              <div class="class-card"><div class="class-title">ExecutionRun</div><div class="class-part"><div>+ id: text PK</div><div>+ task_id: FK</div><div>+ agent_name</div><div>+ model</div><div>+ status</div><div>+ sandbox_id</div></div><div class="class-part"><div>+ started_at / ended_at</div><div>+ result_json</div><div>+ error</div><div>+ trace_jsonl_uri?</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">ExecutionStep</div><div class="class-part"><div>+ id: text PK</div><div>+ run_id: FK</div><div>+ seq: int</div><div>+ kind</div><div>+ status</div></div><div class="class-part"><div>+ input_json</div><div>+ output_json</div><div>+ tool_calls_json</div><div>+ started_at / ended_at</div><div>+ duration_ms</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">ChangeSet</div><div class="class-part"><div>+ id: text PK</div><div>+ task_id: FK</div><div>+ run_id: FK</div><div>+ target_ref_id: FK?</div><div>+ sandbox_id</div></div><div class="class-part"><div>+ status</div><div>+ risk</div><div>+ summary</div><div>+ rollback_plan</div><div>+ project_evolution_change_set_id?</div><div>+ created_at / updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">FileChange</div><div class="class-part"><div>+ id: text</div><div>+ change_set_id: FK</div><div>+ path: text</div><div>+ change_type</div></div><div class="class-part"><div>+ old_hash</div><div>+ new_hash</div><div>+ diff_blob_uri</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">Validation</div><div class="class-part"><div>+ id: text</div><div>+ task_id: FK</div><div>+ change_set_id: FK</div><div>+ command</div></div><div class="class-part"><div>+ status</div><div>+ exit_code</div><div>+ output_blob_uri</div><div>+ duration_ms</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">Artifact</div><div class="class-part"><div>+ id: text PK</div><div>+ task_id: FK?</div><div>+ run_id: FK?</div><div>+ target_ref_id: FK?</div><div>+ kind / name / version</div></div><div class="class-part"><div>+ status</div><div>+ content_blob_uri</div><div>+ content_hash</div><div>+ metadata_json</div><div>+ created_at / updated_at</div></div></div>
+            </div>
+            <div class="relations">
+              <div>RuntimeWorkspace 1 -- * Task</div><div>TargetRef 1 -- * Task</div>
+              <div>Task 1 -- * ExecutionRun</div><div>ExecutionRun 1 -- * ExecutionStep</div>
+              <div>Task 1 -- * ChangeSet</div><div>ChangeSet 1 -- * FileChange</div>
+              <div>ChangeSet 1 -- * Validation</div><div>Task/Run 1 -- * Artifact</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Sprout Conversation 字段模板：sprout_conversation.db</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid two">
+              <div class="class-card"><div class="class-title">Session</div><div class="class-part"><div>+ id: text PK</div><div>+ user_id: text</div><div>+ channel: cli|web|mcp|api</div><div>+ target_ref_id: core FK?</div></div><div class="class-part"><div>+ title</div><div>+ status</div><div>+ locale</div><div>+ summary</div><div>+ metadata_json</div><div>+ created_at / updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">Message</div><div class="class-part"><div>+ id: text PK</div><div>+ session_id: FK</div><div>+ seq: int</div><div>+ role: user|assistant|tool|system</div><div>+ content_type: text|folded_block|json|blob_ref</div></div><div class="class-part"><div>+ content</div><div>+ content_blob_uri?</div><div>+ line_count?</div><div>+ token_estimate</div><div>+ language?</div><div>+ metadata_json</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">Attachment</div><div class="class-part"><div>+ id: text PK</div><div>+ message_id: FK</div><div>+ kind</div><div>+ filename</div><div>+ mime_type</div></div><div class="class-part"><div>+ blob_uri</div><div>+ size_bytes</div><div>+ content_hash</div><div>+ scan_status</div><div>+ metadata_json</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">MessageTaskLink</div><div class="class-part"><div>+ message_id: FK</div><div>+ task_id: core FK</div></div><div class="class-part"><div>+ relation: created|updated|explains|blocks</div><div>+ confidence</div><div>+ created_at</div></div></div>
+            </div>
+            <div class="relations">
+              <div>Session 1 -- * Message</div><div>Message 1 -- * Attachment</div>
+              <div>Message * -- * core.Task</div><div>MessageTaskLink bridges conversation and core</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Sprout Knowledge 字段模板：sprout_knowledge.db</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card"><div class="class-title">KnowledgeItem</div><div class="class-part"><div>+ id: text PK</div><div>+ scope: sprout_global|runtime|policy|workflow</div><div>+ kind</div><div>+ title</div></div><div class="class-part"><div>+ content</div><div>+ content_blob_uri?</div><div>+ evidence_json</div><div>+ status / version</div><div>+ confidence</div><div>+ created_at / updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">MemoryFact</div><div class="class-part"><div>+ id: text PK</div><div>+ scope</div><div>+ owner_id</div><div>+ key</div></div><div class="class-part"><div>+ value</div><div>+ confidence</div><div>+ source_json</div><div>+ expires_at?</div><div>+ created_at / updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">CapabilityNote</div><div class="class-part"><div>+ id: text PK</div><div>+ capability_name</div><div>+ tool_name?</div><div>+ risk_level</div></div><div class="class-part"><div>+ usage_pattern</div><div>+ constraints_json</div><div>+ examples_blob_uri?</div><div>+ updated_at</div></div></div>
+              <div class="class-card"><div class="class-title">KnowledgeEvidence</div><div class="class-part"><div>+ knowledge_id: FK</div><div>+ source_type</div><div>+ source_id</div></div><div class="class-part"><div>+ weight</div><div>+ quote_blob_uri?</div><div>+ created_at</div></div></div>
+              <div class="class-card"><div class="class-title">KnowledgeLink</div><div class="class-part"><div>+ source_id: FK</div><div>+ target_type</div><div>+ target_id</div></div><div class="class-part"><div>+ relation</div><div>+ weight</div><div>+ created_at</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">KnowledgeFTS</div><div class="class-part"><div>+ rowid</div><div>+ title</div><div>+ content</div><div>+ kind</div><div>+ scope</div></div><div class="class-part"><div>derived from KnowledgeItem and CapabilityNote</div></div></div>
+            </div>
+            <div class="relations">
+              <div>KnowledgeItem 1 -- * KnowledgeEvidence</div><div>CapabilityNote * -- * KnowledgeItem</div>
+              <div>MemoryFact 1 -- * KnowledgeEvidence</div><div>KnowledgeFTS indexes KnowledgeItem and CapabilityNote</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Sprout Audit 字段模板：sprout_audit.db</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid two">
+              <div class="class-card"><div class="class-title">Approval</div><div class="class-part"><div>+ id: text</div><div>+ task_id: core FK</div><div>+ tool</div><div>+ arguments_fingerprint</div></div><div class="class-part"><div>+ status</div><div>+ requested_by / decided_by</div><div>+ reason</div><div>+ resource_scope</div><div>+ action_hash</div><div>+ single_use</div><div>+ created_at / decided_at</div><div>+ expires_at / used_at</div></div></div>
+              <div class="class-card"><div class="class-title">SecurityEvent</div><div class="class-part"><div>+ id: text</div><div>+ ts</div><div>+ actor_id</div><div>+ action</div><div>+ resource</div></div><div class="class-part"><div>+ decision</div><div>+ risk</div><div>+ reason</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">WebRequest</div><div class="class-part"><div>+ id: int</div><div>+ ts</div><div>+ route</div><div>+ method</div><div>+ status_code</div></div><div class="class-part"><div>+ duration_ms</div><div>+ session_id?</div><div>+ user_id?</div><div>+ request_id</div></div></div>
+              <div class="class-card"><div class="class-title">OperationLog</div><div class="class-part"><div>+ id: text</div><div>+ ts</div><div>+ actor_id</div><div>+ source</div></div><div class="class-part"><div>+ operation</div><div>+ target</div><div>+ payload_json</div></div></div>
+            </div>
+            <div class="relations">
+              <div>Approval * -- 1 core.Task</div><div>SecurityEvent * -- 0..1 Approval</div>
+              <div>WebRequest * -- 0..1 conversation.Session</div><div>OperationLog * -- 0..1 core.Task</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Sprout Usage 字段模板：sprout_usage.db</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid two">
+              <div class="class-card"><div class="class-title">ModelCall</div><div class="class-part"><div>+ id: text</div><div>+ ts</div><div>+ provider</div><div>+ model</div></div><div class="class-part"><div>+ session_id?</div><div>+ task_id?</div><div>+ run_id?</div><div>+ step_id?</div><div>+ input_tokens</div><div>+ output_tokens</div><div>+ total_tokens</div><div>+ latency_ms</div><div>+ cost_usd</div><div>+ request_id</div><div>+ metadata_json</div></div></div>
+              <div class="class-card"><div class="class-title">ToolUsage</div><div class="class-part"><div>+ id: text</div><div>+ ts</div><div>+ task_id</div><div>+ run_id</div><div>+ step_id</div></div><div class="class-part"><div>+ tool_name</div><div>+ duration_ms</div><div>+ status</div><div>+ metadata_json</div></div></div>
+            </div>
+            <div class="relations">
+              <div>ModelCall * -- 0..1 conversation.Session</div><div>ModelCall * -- 0..1 core.Task</div>
+              <div>ModelCall * -- 0..1 core.ExecutionStep</div><div>ToolUsage * -- 1 core.ExecutionStep</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>JSONL / Blob 模板：Sprout 运行证据与用户项目证据分目录</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid two">
+              <div class="class-card object-card"><div class="class-title">TrajectoryEvent</div><div class="class-part"><div>+ event_id: text</div><div>+ layer: sprout|project</div><div>+ project_id?</div><div>+ task_id: core FK</div><div>+ run_id?: core FK</div></div><div class="class-part"><div>+ name</div><div>+ occurred_at</div><div>+ payload</div></div></div>
+              <div class="class-card object-card"><div class="class-title">TrajectoryFile</div><div class="class-part"><div>+ sprout path: sprout_trajectory/{task}.jsonl</div><div>+ project path: projects/{id}/trajectory/{task}.jsonl</div></div><div class="class-part"><div>+ format: JSONL</div><div>+ append(event)</div><div>+ read_all()</div></div></div>
+              <div class="class-card object-card"><div class="class-title">BlobObject</div><div class="class-part"><div>+ layer: sprout|project</div><div>+ project_id?</div><div>+ uri: sha256.ext</div><div>+ sha256</div></div><div class="class-part"><div>+ mime_type</div><div>+ size_bytes</div><div>+ bytes</div></div></div>
+              <div class="class-card"><div class="class-title">BlobReference</div><div class="class-part"><div>+ layer</div><div>+ owner_table</div><div>+ owner_id</div><div>+ column_name</div></div><div class="class-part"><div>+ blob_uri</div><div>+ preview?</div></div></div>
+            </div>
+            <div class="relations">
+              <div>Sprout trajectory references sprout_core.Task</div><div>Project evidence references manifest/structure/database/evolution records</div>
+              <div>BlobReference * -- 1 BlobObject in same layer</div><div>Do not reuse blob_uri across layers</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Redis Key 模板：sprout:* / project:{id}:*</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card derived-card"><div class="class-title">TaskQueue</div><div class="class-part"><div>+ sprout key: sprout:queue:tasks</div><div>+ project key: project:{id}:queue:tasks</div></div><div class="class-part"><div>+ task_id</div><div>+ priority</div><div>+ ttl?</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">ProjectLock</div><div class="class-part"><div>+ sprout key: sprout:lock:{resource}</div><div>+ project key: project:{id}:lock:{resource}</div></div><div class="class-part"><div>+ owner_run_id</div><div>+ ttl</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">RunStatus</div><div class="class-part"><div>+ sprout key: sprout:run:{id}:status</div><div>+ project key: project:{id}:run:{id}:status</div></div><div class="class-part"><div>+ status</div><div>+ progress</div><div>+ updated_at</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">ContextCache</div><div class="class-part"><div>+ sprout key: sprout:context:{sid}</div><div>+ project key: project:{id}:context:{sid}</div></div><div class="class-part"><div>+ hash</div><div>+ text</div><div>+ ttl</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">MemoryBlockCache</div><div class="class-part"><div>+ sprout key: sprout:memory:block:{owner}</div><div>+ project key: project:{id}:memory:block:{owner}</div></div><div class="class-part"><div>+ version</div><div>+ text</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">WebsocketProgress</div><div class="class-part"><div>+ sprout key: sprout:ws:progress:{run_id}</div><div>+ project key: project:{id}:ws:progress:{run_id}</div></div><div class="class-part"><div>+ event</div><div>+ payload</div></div></div>
+            </div>
+            <div class="relations">
+              <div>sprout:* keys reference sprout_* databases</div><div>project:{id}:* keys reference project_* databases</div>
+              <div>RunStatus mirrors matching ExecutionRun</div><div>ContextCache mirrors matching conversation/core context</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Neo4j 图谱模板：Sprout 运行图谱 + 用户项目本体图谱</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <h3>Sprout 自身运行图谱</h3>
+            <div class="class-grid">
+              <div class="class-card graph-card"><div class="class-title">SproutRuntime</div><div class="class-part"><div>+ runtime_id</div><div>+ version</div><div>+ workspace_root</div></div><div class="class-part"><div>+ config_hash</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">Agent</div><div class="class-part"><div>+ agent_id</div><div>+ name</div><div>+ role</div></div><div class="class-part"><div>+ model_profile</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">Capability</div><div class="class-part"><div>+ capability_id</div><div>+ name</div><div>+ risk_level</div></div><div class="class-part"><div>+ policy_scope</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">Tool</div><div class="class-part"><div>+ tool_id</div><div>+ name</div><div>+ namespace</div></div><div class="class-part"><div>+ input_schema_hash</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">Task</div><div class="class-part"><div>+ task_id</div><div>+ source</div><div>+ status</div></div><div class="class-part"><div>linked to sprout_core.Task</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">ExecutionRun</div><div class="class-part"><div>+ run_id</div><div>+ task_id</div><div>+ status</div></div><div class="class-part"><div>linked to sprout_core.ExecutionRun</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">ChangeSet</div><div class="class-part"><div>+ change_set_id</div><div>+ task_id</div><div>+ risk</div></div><div class="class-part"><div>linked to sprout_core.ChangeSet</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">Approval</div><div class="class-part"><div>+ approval_id</div><div>+ status</div><div>+ action_hash</div></div><div class="class-part"><div>linked to sprout_audit.Approval</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">KnowledgeItem</div><div class="class-part"><div>+ knowledge_id</div><div>+ kind</div><div>+ title</div></div><div class="class-part"><div>linked to sprout_knowledge.KnowledgeItem</div></div></div>
+            </div>
+            <div class="relations">
+              <div>SproutRuntime 1 -- * Agent : RUNS</div><div>Agent * -- * Capability : HAS_CAPABILITY</div>
+              <div>Capability * -- * Tool : ENABLES</div><div>Task 1 -- * ExecutionRun : HAS_RUN</div>
+              <div>ExecutionRun * -- * Tool : CALLS</div><div>Task 0..1 -- * Approval : REQUIRES</div>
+              <div>Task 1 -- * ChangeSet : PRODUCES</div><div>KnowledgeItem * -- * Task : LEARNED_FROM</div>
+            </div>
+            <h3 style="margin-top:18px">用户项目结构图谱</h3>
+            <div class="class-grid">
+              <div class="class-card graph-card"><div class="class-title">UserProject</div><div class="class-part"><div>+ project_id</div><div>+ name</div><div>+ root_path</div></div><div class="class-part"><div>+ repo_url?</div><div>+ revision</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserComponent</div><div class="class-part"><div>+ component_id</div><div>+ project_id</div><div>+ component_type</div></div><div class="class-part"><div>backend | frontend | agent | skill | infra</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserModule</div><div class="class-part"><div>+ module_id</div><div>+ project_id</div><div>+ name</div></div><div class="class-part"><div>+ kind: app/lib/test</div><div>+ summary</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserDirectory</div><div class="class-part"><div>+ path</div><div>+ project_id</div><div>+ depth</div></div><div class="class-part"><div>+ role: source/test/config</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserFile</div><div class="class-part"><div>+ path</div><div>+ project_id</div><div>+ language</div></div><div class="class-part"><div>+ hash</div><div>+ lines</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserSymbol</div><div class="class-part"><div>+ symbol_id</div><div>+ name</div><div>+ kind</div></div><div class="class-part"><div>+ signature</div><div>+ line_range</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserDependency</div><div class="class-part"><div>+ dep_id</div><div>+ name</div><div>+ version?</div></div><div class="class-part"><div>+ source: manifest/import</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserDataSource</div><div class="class-part"><div>+ data_source_id</div><div>+ engine</div><div>+ authority_level</div></div><div class="class-part"><div>linked to project_database.DataSource</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserTable</div><div class="class-part"><div>+ table_id</div><div>+ name</div><div>+ domain</div></div><div class="class-part"><div>linked to project_database.DatabaseTable</div></div></div>
+              <div class="class-card graph-card"><div class="class-title">UserVersion</div><div class="class-part"><div>+ version_id</div><div>+ git_revision</div><div>+ created_at</div></div><div class="class-part"><div>linked to project_evolution.ProjectVersion</div></div></div>
+            </div>
+            <div class="relations">
+              <div>UserProject 1 -- * UserComponent : HAS_COMPONENT</div><div>UserComponent 1 -- * UserModule : HAS_MODULE</div>
+              <div>UserProject 1 -- * UserDirectory : HAS_DIRECTORY</div><div>UserComponent 1 -- * UserFile : OWNS_FILE</div>
+              <div>UserDirectory 1 -- * UserDirectory : CONTAINS</div><div>UserDirectory 1 -- * UserFile : CONTAINS</div>
+              <div>UserModule 1 -- * UserFile : OWNS_FILE</div><div>UserFile 1 -- * UserSymbol : DEFINES</div>
+              <div>UserSymbol * -- * UserSymbol : CALLS / EXTENDS / IMPLEMENTS</div><div>UserFile * -- * UserDependency : IMPORTS / USES</div>
+              <div>UserComponent * -- * UserDataSource : OWNS / USES</div><div>UserDataSource 1 -- * UserTable : CONTAINS</div>
+              <div>UserTable * -- * UserTable : FK / READ_MODEL / EVENT</div><div>UserVersion * -- * UserFile/UserTable : SNAPSHOTS</div>
+            </div>
+            <h3 style="margin-top:18px">两层之间的桥接关系</h3>
+            <div class="relations">
+              <div>Sprout Task * -- * UserProject : TARGETS_PROJECT</div><div>Sprout Task * -- * UserModule : TARGETS_MODULE</div>
+              <div>Sprout Task * -- * UserFile : READS / MODIFIES</div><div>Sprout ChangeSet * -- * UserFile : CHANGES</div>
+              <div>Sprout KnowledgeItem * -- * UserSymbol : EXPLAINS / MENTIONS</div><div>Sprout ExecutionRun * -- * UserDependency : INSTALLS / USES</div>
+            </div>
+            <p style="margin-top:12px">Neo4j 分两层：Sprout 自己的运行图谱用于理解 agent、工具、能力、任务和审批；用户项目图谱用于理解项目拆分后的模块、目录、文件、符号和依赖。两层通过任务、变更、执行和知识连接。节点的核心属性会链接回 SQLite 权威记录，但跨实体关系、影响路径、依赖路径和项目结构图谱本身是 Neo4j 的核心职责。</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Milvus Collection 模板：sprout_vec_* / project_{id}_vec_*</h2>
+        <div class="diagram">
+          <div class="class-diagram">
+            <div class="class-grid">
+              <div class="class-card derived-card"><div class="class-title">VectorRecord</div><div class="class-part"><div>+ key: varchar PK</div><div>+ embedding: float[1536]</div></div><div class="class-part"><div>+ metadata_json</div><div>+ source_layer</div><div>+ source_id</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">sprout_vec_messages</div><div class="class-part"><div>extends VectorRecord</div><div>source: sprout_conversation.Message</div></div><div class="class-part"><div>metadata: session_id, seq, operator</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">project_{id}_vec_manifest</div><div class="class-part"><div>extends VectorRecord</div><div>source: project_manifest.Project/Component</div></div><div class="class-part"><div>metadata: project_id, component_type</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">sprout_vec_tasks</div><div class="class-part"><div>extends VectorRecord</div><div>source: sprout_core.Task/Run</div></div><div class="class-part"><div>metadata: status, agent, capability</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">project_{id}_vec_structure</div><div class="class-part"><div>extends VectorRecord</div><div>source: project_structure.FileNode/SymbolNode</div></div><div class="class-part"><div>metadata: path, symbol, language</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">project_{id}_vec_database</div><div class="class-part"><div>extends VectorRecord</div><div>source: project_database.Table/Column/SplitPlan</div></div><div class="class-part"><div>metadata: data_source, table, domain</div></div></div>
+              <div class="class-card derived-card"><div class="class-title">project_{id}_vec_evolution</div><div class="class-part"><div>extends VectorRecord</div><div>source: project_evolution.Decision/ChangeSet</div></div><div class="class-part"><div>metadata: version, change_type, status</div></div></div>
+            </div>
+            <div class="relations">
+              <div>Every collection implements VectorRecord</div><div>Sprout vectors never mix with project vectors</div>
+              <div>Original text stays in the matching SQLite/Blob layer</div><div>All vectors are rebuildable per layer</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

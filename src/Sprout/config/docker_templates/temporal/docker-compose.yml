@@ -1,0 +1,36 @@
+services:
+  temporal-postgres:
+    image: postgres:13
+    container_name: sprout-temporal-postgres
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    ports:
+      - "5433:5432"
+    volumes:
+      - temporal-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  temporal:
+    image: temporalio/auto-setup:1.26.2
+    container_name: sprout-temporal
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgres
+      SKIP_SCHEMA_SETUP: "false"
+    ports:
+      - "7233:7233"
+
+volumes:
+  temporal-pgdata:

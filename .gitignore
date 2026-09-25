@@ -1,0 +1,73 @@
+.venv/
+.env
+.env.*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+# --basetemp target: bare pytest hits PermissionError on the system temp dir,
+# so test runs redirect temp here. Scratch only -- never commit.
+.pytest_tmp/
+# Same thing spelled with a hyphen: a stray run used this name. Kept separately
+# because git does not fold the two together, and without it `git status` warns
+# "could not open directory '.pytest-tmp/'" on every invocation.
+.pytest-tmp/
+.ruff_cache/
+.idea/
+
+# Database snapshots taken before touching real data. These are copies of the
+# operator's sprout home -- conversation turns and the audit stream included --
+# so they must never be pushed. Live outside .pytest_tmp/ on purpose: pytest
+# deletes its basetemp tree at the start of every run.
+/backups/
+
+# Root-level tests are kept local-only (not published to the remote);
+# src/Sprout/tests and web/tests are tracked suites and NOT covered by this rule
+/tests/
+
+web/frontend/node_modules/
+web/frontend/dist/
+
+data/
+web/webapi/data/
+
+# Docker six-lane stack: bind-mount state for the Milvus service (the other
+# three lanes live in a named volume). The stack itself is tracked source.
+/docker/volumes/
+
+# Agent scratch space: session logs, workspace memory, archived files
+.workbuddy/
+
+# Claude Code local state: permission allowlist and its own git worktrees.
+# The worktrees are nested git repos -- staging one records a gitlink and
+# creates a broken submodule entry.
+.claude/
+
+# Scratch logs and text dumps written by tooling sessions
+/*.txt
+!requirements.txt
+
+# Generated design / planning docs (local reading only, not source)
+/ARCHITECTURE.md
+/AUTHZ_DESIGN.md
+/src/Sprout/rootstock/DESIGN.md
+/RUNTIME_DATA_PLAN.md
+/STORAGE_AND_MEMORY.md
+/STORAGE_WIRING.md
+/SIX_DATABASES_GUIDE.md
+/EXECUTION_SECURITY_AUDIT.md
+/MESSAGE_PERSISTENCE.md
+
+# Session audit reports (local reading only; superseded drafts live in
+# .workbuddy/legacy/docs-20260921/)
+/BUG_MASTER_TABLE_*.md
+/DEV_PULL_BUG_REVIEW_*.md
+/LANDING_AUDIT_*.md
+/CODE_AUDIT_*.md
+/STORAGE_REMEDIATION_PLAN.md
+/AUDIT_DIFF_*.patch
+
+.DS_Store
+
+# Verification probes written while auditing the runtime. Scratch only --
+# they pin storage to a temp dir and must never be committed.
+/.verify/

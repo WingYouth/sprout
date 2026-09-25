@@ -1,0 +1,38 @@
+# Settings for the app container of the Docker six-lane stack (sprout-app).
+#
+# The container is a *runner*: it executes the repo's own code (bind-mounted
+# read-only at /app) against
+#   * the Sprout file authorities on the `sprout-data` volume,
+#   * the user project ontology on the `project-data` volume, and
+#   * the three service lanes on the compose network — Redis / Milvus / Neo4j.
+#
+# Paths are deliberately relative. Both DSN parsers (`storage/bundle.py` and
+# `rootstock/backends/__init__.py`) strip exactly one leading slash after the
+# scheme, so `sqlite:////data/sprout_conversation.db` would silently become the
+# relative path `data/sprout_conversation.db`. The container's WORKDIR is /data
+# (the volume), which
+# is what these relative paths resolve against.
+
+[runtime]
+max_tool_steps = 12
+
+[storage]
+core           = "sqlite:///sprout_core.db"
+conversation   = "sqlite:///sprout_conversation.db"
+knowledge      = "sqlite:///sprout_knowledge.db"
+audit          = "sqlite:///sprout_audit.db"
+usage          = "sqlite:///sprout_usage.db"
+context        = "jsonl://context"                       # JSONL evidence lane
+cache          = "redis://sprout-redis:6379"             # service name, in-network port
+vectors        = "milvus://sprout-milvus:19530"
+graph          = "neo4j://neo4j:sprout123@sprout-neo4j:7687"
+blobs_dir      = "sprout_blobs"
+trajectory_dir = "sprout_trajectory"
+project_root   = "projects"
+
+[storage.observations]
+enabled = true
+dsn     = "sqlite:///sprout_audit.db"
+
+[memory]
+home = "memory"
