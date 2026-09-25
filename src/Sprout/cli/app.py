@@ -120,7 +120,14 @@ def default_command(ctx: typer.Context) -> None:
         chat_command.chat()
 
 app.command()(chat_command.chat)
-app.command(name="run")(run_command.run)
+app.command(
+    name="run",
+    help=_L(
+        "从当前项目执行完整工程闭环：扫描、策略、编码、验证、融合、全项目测试和确认。",
+        "Run the full engineering loop from the current project: scan, strategy, "
+        "coding, validation, integration, whole-project verification, and confirmation.",
+    ),
+)(run_command.run)
 app.command()(serve_command.serve)
 app.command()(info)
 app.add_typer(mcp_command.app, name="mcp")

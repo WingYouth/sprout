@@ -200,6 +200,53 @@ def test_workspace_query_tool_returns_symbols(tmp_path: Path) -> None:
         )
         assert result.ok is True
         assert result.data
+        assert result.data[0]["path"]
+
+    asyncio.run(run())
+
+
+def test_workspace_query_tool_locates_feature_code_bounds(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    intelligence = WorkspaceIntelligence(
+        knowledge_store=MemoryKnowledgeStore(),
+        vector_store=MemoryVectorStore(),
+    )
+    workspace = Workspace(
+        id="workspace-1",
+        root=root,
+        kind=WorkspaceKind.LOCAL_DIRECTORY,
+    )
+    task = Task(
+        id="task-1",
+        workspace_id=workspace.id,
+        instruction="understand value feature",
+        source="test",
+    )
+
+    async def run() -> None:
+        async def analyze(workspace_id: str):
+            return await intelligence.analyze(workspace, task)
+
+        tool = WorkspaceQueryTool(analyze)
+        result = await tool.invoke(
+            {
+                "workspace_id": workspace.id,
+                "operation": "locate_feature",
+                "query": "value",
+            }
+        )
+
+        assert result.ok is True
+        assert result.data
+        value = next(
+            item for item in result.data if item["qualified_name"] == "value"
+        )
+        assert value["path"].endswith("src/package/b.py")
+        assert value["start_line"] == 3
+        assert value["end_line"] == 4
+        assert value["insert_before_line"] == 3
+        assert value["insert_after_line"] == 4
+        assert "3: def value():" in value["preview"]
 
     asyncio.run(run())
 

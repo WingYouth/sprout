@@ -81,6 +81,7 @@ async def ask_approval(
     message: str,
     *,
     allow_similar: bool = False,
+    allow_quit: bool = False,
     allow_failures: bool = False,
     yes_no: bool = False,
 ) -> str | None:
@@ -92,7 +93,7 @@ async def ask_approval(
             message,
             choices=_choices(
                 allow_similar=allow_similar,
-                allow_quit=False,
+                allow_quit=allow_quit,
                 allow_failures=allow_failures,
                 yes_no=yes_no,
             ),

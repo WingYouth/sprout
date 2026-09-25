@@ -218,15 +218,17 @@ def test_run_command_is_a_top_level_project_loop() -> None:
     result = CliRunner().invoke(app, ["run", "--help"])
 
     assert result.exit_code == 0
-    assert "project" in result.stdout.casefold()
-    assert "strategy" in result.stdout.casefold()
-    assert "validation" in result.stdout.casefold()
+    text = result.stdout.casefold()
+    assert "project" in text or "项目" in result.stdout
+    assert "strategy" in text or "策略" in result.stdout
+    assert "validation" in text or "验证" in result.stdout
 
 
-def test_run_manifest_brief_renders_scan_facts() -> None:
+def test_run_manifest_brief_renders_scan_facts(monkeypatch: pytest.MonkeyPatch) -> None:
     from Sprout.cli.commands.run import _manifest_brief
     from Sprout.workspace.models import WorkspaceManifest
 
+    monkeypatch.setenv("SPROUT_CLI_LANG", "en")
     manifest = WorkspaceManifest(
         workspace_id="ws-1",
         detected_languages=("python", "typescript"),
@@ -238,6 +240,12 @@ def test_run_manifest_brief_renders_scan_facts() -> None:
     assert "languages=python,typescript" in brief
     assert "frameworks=fastapi" in brief
     assert "test=pytest -q" in brief
+
+    monkeypatch.setenv("SPROUT_CLI_LANG", "zh")
+    brief = _manifest_brief(manifest)
+    assert "语言=python,typescript" in brief
+    assert "框架=fastapi" in brief
+    assert "测试=pytest -q" in brief
 
 
 def test_run_clean_instruction_strips_markup() -> None:
@@ -345,6 +353,74 @@ async def test_run_resolve_approvals_decides_verification_grant(
 
 
 @pytest.mark.asyncio
+async def test_run_resolve_approvals_auto_approves_without_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from Sprout.cli.commands import run as run_module
+    from Sprout.task.models import TaskStatus
+
+    decisions: list[tuple[str, bool, str]] = []
+    prompted = False
+
+    def fail_prompt(*_args, **_kwargs):
+        nonlocal prompted
+        prompted = True
+        return "reject"
+
+    monkeypatch.setattr(run_module, "_ask_approval", fail_prompt)
+
+    class _Record:
+        id = "grant-1"
+        task_id = "task-1"
+        tool = "process_run"
+        action_summary = '{"action": "verification_commands"}'
+        action_hash = "h"
+        approval_class = "verification_commands"
+        single_use = True
+
+    class _ApprovalStore:
+        async def save_approval(self, record) -> None:
+            record.saved = True
+
+    class _Approvals:
+        store = _ApprovalStore()
+
+    class _Runtime:
+        approvals = _Approvals()
+
+        async def pending_approvals(self) -> list:
+            return [_Record()]
+
+        async def decide_approval(
+            self,
+            approval_id: str,
+            approved: bool,
+            *,
+            decided_by: str,
+        ) -> None:
+            decisions.append((approval_id, approved, decided_by))
+
+        async def list_change_proposals(self, task_id: str) -> list:
+            return []
+
+        async def get_task(self, task_id: str):
+            return SimpleNamespace(id=task_id, status=TaskStatus.COMPLETED)
+
+    task = SimpleNamespace(id="task-1", status=TaskStatus.WAITING_APPROVAL)
+    _, quit_loop = await run_module._resolve_approvals(
+        _Runtime(),
+        task,
+        auto_approve=True,
+    )
+
+    assert prompted is False
+    assert decisions == [("grant-1", True, "sprout-run")]
+    assert quit_loop is False
+
+
+@pytest.mark.asyncio
 async def test_run_derive_next_instruction_uses_configured_model() -> None:
     from types import SimpleNamespace
 
@@ -418,6 +494,62 @@ async def test_run_whole_project_verify_reports_outcomes() -> None:
         _Runtime(), SimpleNamespace(id="task-1", workspace_id="ws-1")
     )
 
+    assert outcomes == [
+        {
+            "command": "pytest -q",
+            "passed": True,
+            "withheld": False,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_whole_project_verify_auto_approves_withheld_command() -> None:
+    from types import SimpleNamespace
+
+    from Sprout.cli.commands.run import _whole_project_verify
+    from Sprout.execution.models import ProcessResult
+    from Sprout.workspace.models import WorkspaceManifest
+
+    calls: list[str] = []
+    decisions: list[tuple[str, bool, str]] = []
+
+    class _Runtime:
+        async def scan_workspace(self, workspace_id: str) -> WorkspaceManifest:
+            return WorkspaceManifest(
+                workspace_id=workspace_id,
+                test_commands=("pytest -q",),
+            )
+
+        async def run_task_process(self, task_id: str, command: tuple[str, ...]):
+            calls.append(" ".join(command))
+            if len(calls) == 1:
+                return ProcessResult(
+                    command=command,
+                    allowed=False,
+                    approval_id="approval-1",
+                )
+            return ProcessResult(command=command, exit_code=0, allowed=True)
+
+        async def decide_approval(
+            self,
+            approval_id: str,
+            approved: bool,
+            *,
+            decided_by: str,
+            resume_session: bool,
+        ) -> None:
+            decisions.append((approval_id, approved, decided_by))
+            assert resume_session is False
+
+    outcomes = await _whole_project_verify(
+        _Runtime(),
+        SimpleNamespace(id="task-1", workspace_id="ws-1"),
+        auto_approve=True,
+    )
+
+    assert calls == ["pytest -q", "pytest -q"]
+    assert decisions == [("approval-1", True, "sprout-run")]
     assert outcomes == [
         {
             "command": "pytest -q",
