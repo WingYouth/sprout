@@ -17,9 +17,9 @@
 
 <h1 align="center">SEAM Sprout</h1>
 
-SEAM Sprout is a self-evolving gene fragment for software projects. It attaches to a codebase, understands its structure and context, generates code, runs it in an isolated environment, verifies the result, and integrates the change back into the project.
+SEAM Sprout is an AI engineering runtime embedded inside a software project. It moves a change from user intent to code edits, isolated execution, verification, approval, integration, and traceability, so AI can do more than suggest: it can complete a controlled, reviewable engineering loop inside the project boundary.
 
-It is designed to help every project improve, repair itself, and grow automatically while keeping humans in control of dangerous changes.
+The core problem Sprout solves is that real software work is full of small but consequential changes, while context is scattered, risk is hard to control, verification is tedious, and hard-won project knowledge is rarely reused. Sprout brings the codebase, sessions, memory, knowledge, tools, approvals, and audit trail into one runtime so a project can be maintained, repaired, and improved continuously while humans stay in control of dangerous actions.
 
 <div align="center">
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.12%2B-8b5cf6" /></a>
@@ -28,22 +28,43 @@ It is designed to help every project improve, repair itself, and grow automatica
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-10b981" /></a>
 </div>
 
-## Product Highlights
+## What Sprout Solves
 
-- **Precise project analysis**: reads repository structure, code context, sessions, memory, and knowledge before acting.
-- **Code generation**: turns intent into concrete changes instead of only answering questions.
-- **Isolated execution**: runs generated code in a git-worktree sandbox and applies changes through controlled brokers.
-- **Code verification**: tests and checks every change before integration.
-- **Code integration**: applies verified changes back to the project and records the full trace.
-- **Automatic growth**: learns from completed work and creates reviewable proposals for future improvement.
+Sprout is built for project-level change delivery, not one-off code Q&A. It places AI inside a controlled pipeline: read project evidence, build a plan, modify code in an isolated worktree, run checks, produce a reviewable proposal, then apply the approved result back to the project with a trace.
 
-## Commercial Use Cases
+| Real project pain | Why it is hard | Sprout's answer |
+|---|---|---|
+| **AI gives an answer, but the engineering work is still unfinished** | A snippet still has to land in the right files, fit the existing design, pass tests, and survive conflicts. | Turns natural-language requests into executable tasks with planning, patches, checks, proposals, and formal apply. |
+| **Context is scattered across code, data, docs, and prior conversations** | Good engineering decisions depend on repository structure, interfaces, storage schemas, historical decisions, and the current goal. | Combines project scans, sessions, memory, knowledge, and storage evidence inside one runtime. |
+| **Generated code looks plausible but is not proven** | LLM output is often reviewed before it has run in the target environment. | Executes changes and checks in a git-worktree sandbox, then attaches verification evidence to the proposal. |
+| **Risky actions need enforceable boundaries** | File writes, process execution, network access, and database access can break systems, leak secrets, or bypass ownership. | Routes dangerous actions through risk levels, policies, approvals, and controlled brokers. |
+| **Maintenance work keeps piling up** | Small bugs, documentation drift, interface mismatches, refactors, and missing tests are important but easy to defer. | Continuously scans, repairs, and creates reviewable growth candidates for future improvement. |
+| **Learning does not compound across tasks** | Fixes, project preferences, and workflow knowledge disappear into chat history. | Persists trajectories, memory, knowledge, and versioned skills so completed work can improve future work. |
+| **Multiple surfaces drift apart** | CLI, web, MCP, Python API, and gateways can end up with different behavior, permissions, and audit paths. | Sends every surface through the same `create_runtime()` assembly path with shared storage, authorization, events, and audit. |
+| **Storage and infrastructure are difficult to trust** | Sessions, knowledge, audit, vectors, graph data, and cache state may live in different backends. | Provides initialization, status checks, and verifiable read/write paths across SQLite, JSONL, blobs, Redis, Milvus, and Neo4j. |
 
-- Projects that need an embedded AI engineer, not a separate chat tool.
-- Codebases that need continuous repair, refactoring, or feature completion.
-- Teams that want generated code to be executed, tested, and integrated safely.
-- Organizations that require project-level memory, evolution, and auditability.
-- **Honest isolation boundary**: every risky action goes through the authorization layer (hard floor → policy layers → approvals), and changes land in a git-worktree sandbox. That sandbox isolates *change visibility*, not *privileges* — agent processes share the host filesystem, OS user, network, and kernel, and there is no container or OS-level backend. Of the seven execution brokers, the file, process, and apply brokers are the ones assembled into the runtime today; the network, database, and git brokers exist but are not yet wired into the agent path.
+## Product Capabilities
+
+- **Project evidence first**: reads repository structure, code context, sessions, memory, knowledge, and storage evidence before acting.
+- **Reviewable planning**: turns project-scan suggestions or direct requests into evidence-backed implementation plans.
+- **Controlled code generation**: creates real patches and applies file, process, and change operations through brokers.
+- **Isolated execution and verification**: runs changes and checks in a git-worktree sandbox before touching the main project.
+- **Change integration and traceability**: turns verified work into proposals, waits for approval, applies accepted changes, and records the full trace.
+- **Project-level memory**: persists sessions, memory, knowledge, and task history so each task builds on accumulated context.
+- **Automatic growth**: learns from completed work and creates reviewable candidates for future improvement.
+- **Unified entry points**: exposes one runtime through the Python API, React web console, interactive CLI, MCP server, and gateways.
+- **Reusable skills**: imports and manages versioned skills through a safety-scanning broker, extending what the agent can do.
+
+## Use Cases
+
+- Projects that need an embedded AI engineering runtime instead of an external chat assistant.
+- Teams that want AI-generated code to pass through tests, approvals, audit, and integration.
+- Codebases with ongoing repair, refactoring, test coverage, documentation, and interface-alignment work.
+- Organizations that require project-level memory, traceable automation, and reusable engineering capabilities.
+
+## Safety Boundary
+
+Every risky action goes through the authorization layer (hard floor → policy layers → approvals), and changes land in a git-worktree sandbox. That sandbox isolates *change visibility*, not *privileges*: agent processes share the host filesystem, OS user, network, and kernel, and there is no container or OS-level backend. Of the seven execution brokers, the file, process, and apply brokers are the ones assembled into the runtime today; the network, database, and git brokers exist but are not yet wired into the agent path.
 
 ## Tech Stack
 
@@ -175,7 +196,7 @@ For the `aiyallm` model provider, install its distribution:
 pip install aiyallm
 ```
 
-### Six databases in one command
+### Six databases in two commands
 
 The runtime fans out to six databases. Three are plain files — SQLite, the
 JSONL evidence log and the blob store — so they need no installation at all;
@@ -200,8 +221,9 @@ snapshot through the normal storage bundle and then reads every lane back with
 that lane's own client, which is what makes "all six are up" a verified fact
 rather than a claim. `sprout db init` initializes all configured lanes and
 `sprout db status` checks them one at a time.
-pull the three service images (with a mirror fallback for blocked Docker Hub),
-build the runner image, start the lanes, prove them.
+With Docker, `init` also pulls the three service images (with a mirror fallback
+for blocked Docker Hub), builds the runner image, starts the lanes, and proves
+them.
 
 Ports, configuration, the three testing layers, the no-Docker profile and
 troubleshooting live in `~/.sprout/docker/README.md`.
@@ -1162,7 +1184,7 @@ Sprout 主目录已就绪
 ### TC-4.11 FTS 分词器迁移 — P1
 - **目的**:验证历史库(`unicode61`)能平滑迁到 `trigram`,且**数据不丢**。
 - **前置**:构造一个旧格式库(或使用既有历史库的副本)
-- **操作**:打开该库触发运行时,然后 `$SPROUT storage status` 查 `tokenizer`
+- **操作**:打开该库触发runtime,然后 `$SPROUT storage status` 查 `tokenizer`
 - **预期**:
   - tokenizer 变为 `trigram`
   - **轮次数不变**(迁移是无损的)
@@ -1235,15 +1257,15 @@ Sprout 主目录已就绪
 - **回归点**:普通闲聊(如 `use the tool`)不能被这个问询打断 —— 问询除了分类器的 intent,
   还要求 `detect_task_hint` 在文本上给出确定性证据。
 - **两条触发路径(都要覆盖)**:问询有两个入口,互为兜底。
-  1. **运行时的措辞闸**(agent 启动前):分类器判为 `task` **且** `detect_task_hint`
+  1. **runtime 的措辞闸**(agent 启动前):分类器判为 `task` **且** `detect_task_hint`
      在文本上命中关键词。便宜,能省一次模型往返,但它读的是**字面**,打错字就废。
   2. **agent 主动举手**(agent 启动后):对话路径的 agent 现在有 `request_workspace` 工具。
-     它读的是**整轮对话**,所以措辞再怪也认得出;调用后运行时照样 hold 住原指令。
+     它读的是**整轮对话**,所以措辞再怪也认得出;调用后runtime 照样 hold 住原指令。
 - **必测的错字用例** `你能帮我在整个项目的根目录下写一一个冒泡排序的代码吗`:
   `写一一个` 不匹配任何 `TASK_KEYWORDS`,第 1 条路**必然不触发**(实测 `detect_task_hint` 为
   `False`,分类器也返回 `None`)。此时**必须**由第 2 条路兜住,弹出问询。
   这就是用户实际发来的那句话 —— 修复前它掉进对话路径,agent 只能说"我没有写工具",
-  然后自己编了一套"请给我绝对路径"的话术(运行时**从不**要求绝对路径,
+  然后自己编了一套"请给我绝对路径"的话术(runtime**从不**要求绝对路径,
   `_request_workspace` 用的是 `Path.cwd()`)。
 - **自动化**:`src/Sprout/tests/test_workspace_consent.py`(22 例,含上述错字用例的正反两面)。
 - **任务挂起后必须回报(否则"我写完告诉你"是空话)**:后台任务脱离产生它的那一轮运行,
@@ -1504,7 +1526,7 @@ line1 prev_hash == GENESIS: True
 - **预期**:trust 保持 `trusted`
 - **⚠️ 曾经的坑(已修)**:快照是从**磁盘扫描**重建的,而加载器对 `.fetched/` / `.evolved/`
   下的东西**一律**标 untrusted(信任是注册表的决定,扫描不可能知道)。扫描的这个"占位判断"
-  被写进了 index.json,而 index.json 正是运行时**恢复信任所依据的权威** —— 于是
+  被写进了 index.json,而 index.json 正是 runtime**恢复信任所依据的权威** —— 于是
   `skills index --rebuild` 静默**撤销**了操作者对每个下载/进化技能的批准,它们从提示词里
   消失,且没有任何报错。
 - **影响面(当时实测)**:
@@ -1512,7 +1534,7 @@ line1 prev_hash == GENESIS: True
   - 增长流水线刚发布的 `.evolved/` 技能,一次 rebuild 后就掉出提示词
 - **修复方式**:`reconcile` 手里有注册表,所以由它把记录在案的 `(trust, digest)` 原样带过去
   (`_carry_approval`),而不是采用磁盘扫描的判断。内容比对仍然只发生在**一处** ——
-  运行时的 `_restore_trust` 会用记录的 digest 和磁盘上的技能核对,被改过的技能在那里降级。
+  runtime 的 `_restore_trust` 会用记录的 digest 和磁盘上的技能核对,被改过的技能在那里降级。
 - **边界(应同时验证)**:
   - 注册表里 `trust=untrusted` 的技能,rebuild 后**仍然** untrusted(修复不是"一律放行")
   - 批准之后**又改过内容**的技能,rebuild 后应**降级**(批准不能漂移到没批过的字节上)
@@ -1906,7 +1928,7 @@ PYTHONPATH=src .venv/Scripts/python.exe -m Sprout project task-cancel <task_id �
 | 5 | **Docker 自动启动撞名**:固定 `container_name` 无视 `--project-name`,两个 compose project(目录派生的 `docker` 与固定的 `sprout`)抢同一个 `/sprout-*` 名字,`up` 退出非 0 → `sprout chat` 起不来。**冷机与「停着没删」都会坏** | KB-2 / TC-2.1 / TC-2.1b | **高** | 三层修复:①`docker-compose.yml` **删掉 4 处 `container_name`**(project 名自动限定,`sprout-sprout-redis-1` 与 `sprout-redis` 不再重叠);②`_port_is_open` **先探测**,已通则完全不碰;③`_start_existing_container` **收养停着的容器**(`docker start`,不重建),保住匿名卷里的数据,并用 `_await_listening` 补上 `--wait` 缺失的等待。<br>**服务名未变**,故 `docker compose exec sprout-redis …` 等配方与容器内 DNS(`redis://sprout-redis:6379`)全部照旧 |
 | 6 | **README 文档了两条不存在的命令**:`README.md` 与 `README_CN.md` 的 `sprout evolution status` | KB-3 | 低(文档) | 两份 README 同步改为 `sprout evolution candidates`(实测存在) |
 | 7 | **chat 里的编码请求被静默降级成闲聊**:意图已正确识别为 `task`(置信度 0.8),但 `handle` 的任务分支还要求 `workspace_id`,CLI 聊天消息不带它 → 掉进对话路径。而对话路径的 agent **没有任何写文件的工具**(写工具只挂在 AGENT 节点上,任务编译后才存在),于是对一个明确的"帮我写个文件"回"我写不了"。**两层缺陷**:①缺工作区时静默降级;②`handle_stream`(REPL 真正走的那条)**根本没有任务分支**,所以即便补上工作区也到不了编码路径 | TC-6.1b | **高** | 改为**问而不是降级**:无工作区的 task 意图把轮次**挂起**,问操作者"用哪个目录"(单任务同意,`WORKSPACE_CONSENT_KEY`),`grant_workspace_consent` 再恢复执行。两条 online 路径共用 `_dispatch_task_intent`,防止再次漂移。<br>问询**额外要求 `detect_task_hint` 的确定性证据** —— 只凭分类器会把普通闲聊也拦下来(测试替身对含 "task" 子串的提示词一律回 `task`,曾打挂 3 个既有用例)。<br>挂起**通过标记消息**实现而非自写 turn:`_persist_turns` 才是在线路径唯一的权威写点,双写会让一条指令落成两条 user turn |
-| 8 | **措辞闸漏字即失效,且 agent 只能自己编话术**:第 7 条的问询读的是**字面** —— `写一一个`(用户实际发来的原话,多了个"一")不匹配任何 `TASK_KEYWORDS`,`detect_task_hint` 返回 `False`,分类器对这句也返回 `None`,两条路同时漏掉。agent 明知这是编码任务、也明知缺的是工作区,却**没有渠道**把这个判断交回运行时,于是自己编了一套话术,**索要绝对路径**(运行时从不要求:`_request_workspace` 用 `Path.cwd()`,`open_workspace` 内部 `resolve()`),并把只读侦察一路上撞到 HIGH-risk 工具(`skill_script` / `cli_tool_run` / `process_run`,task id 全空)的审批瀑布展示给用户 | TC-6.1b | **高** | 给**对话路径**的 agent 加 `request_workspace` 工具(low risk,无副作用,放全局 registry —— 不是 `sandbox_ref` 守门的 AGENT 节点专属工具):agent 认出"要写文件但没有工作区"时调用它,`ToolResult.workspace_request` 冒泡到 `AgentLoop`,以 `workspace_requested` 元数据结束本轮,由 `_workspace_request_from_agent` 走**同一条** hold → consent 链。<br>这让两条路互补:**措辞闸**读字面、便宜、能省一次模型往返;**agent 举手**读整轮对话,打错字也认得出。<br>护栏:已绑定 `workspace_id` 或已带 `workspace_consent` 时不重复 hold(否则恢复会自己挂住自己) |
+| 8 | **措辞闸漏字即失效,且 agent 只能自己编话术**:第 7 条的问询读的是**字面** —— `写一一个`(用户实际发来的原话,多了个"一")不匹配任何 `TASK_KEYWORDS`,`detect_task_hint` 返回 `False`,分类器对这句也返回 `None`,两条路同时漏掉。agent 明知这是编码任务、也明知缺的是工作区,却**没有渠道**把这个判断交回 runtime,于是自己编了一套话术,**索要绝对路径**(runtime从不要求:`_request_workspace` 用 `Path.cwd()`,`open_workspace` 内部 `resolve()`),并把只读侦察一路上撞到 HIGH-risk 工具(`skill_script` / `cli_tool_run` / `process_run`,task id 全空)的审批瀑布展示给用户 | TC-6.1b | **高** | 给**对话路径**的 agent 加 `request_workspace` 工具(low risk,无副作用,放全局 registry —— 不是 `sandbox_ref` 守门的 AGENT 节点专属工具):agent 认出"要写文件但没有工作区"时调用它,`ToolResult.workspace_request` 冒泡到 `AgentLoop`,以 `workspace_requested` 元数据结束本轮,由 `_workspace_request_from_agent` 走**同一条** hold → consent 链。<br>这让两条路互补:**措辞闸**读字面、便宜、能省一次模型往返;**agent 举手**读整轮对话,打错字也认得出。<br>护栏:已绑定 `workspace_id` 或已带 `workspace_consent` 时不重复 hold(否则恢复会自己挂住自己) |
 | 9 | **任务停下来了,而问它的人永远不会知道**:后台任务脱离产生它的那一轮运行,chat 路径**没有任何机制**观察它的状态,所以 agent 那句"写完我会告诉你"在结构上就无法兑现 —— 任务把文件写进沙箱、停在审批上,然后**整个会话再没人被通知**。用户于是反复追问"怎么还是没写成功",而系统这侧根本没有能开口的地方。**同批暴露的第二个缺陷**:经同意创建的任务 `source` 一律记成 `unknown` —— `_handle_task` 取的是 `message.channel`,而同意是从 `channel="internal"` 的内部消息恢复的,`coerce_source("internal")` 没有别名;`unknown` 恰好也是"没看出来"的取值,记录因此失去意义。第三个:任务落库时不记 `session_id`,挂起的任务不属于任何会话,回报**无从匹配** | TC-6.1b | **高** | 每轮结束(在同意/审批处理**之后**,以覆盖它们刚排入的任务)列出本会话仍在等待决定的任务,并给出**确切命令**:待批提案 → `sprout project approve <proposal_id 前 8 位>`;否则 `task_id` 匹配的待批授权 → `sprout approvals approve <approval_id 前 8 位>`;两者皆无则只报状态、不猜。`WAITING_APPROVAL` 一个状态对应**两种**原因而两者的 id 与子命令都不同,故 `task_progress()` **看实际存在什么**来判定而非从状态反推。**只报告、绝不自动决断** —— 停车本身就是安全属性。配套:`_handle_task` 优先取 `origin_channel` 记 `source`;创建任务时记 `session_id` |
 | 10 | **patch 的 context 要求逐字节相等,模型看不见的空白就足以让整个 tool call 失败**:`execution/patch.py` 的 `apply_hunks` 旧实现只做精确比较,任一 context/删除行不等即 `PatchError`。而模型凭记忆写 patch 时**语义可靠、空白不可靠** —— 行尾空格它看不见,排版破折号会被写成 ASCII 连字符(文件里 `–` / `—`,patch 里 `-`)。这类 patch 全部硬失败,而报错只说 `context mismatch`,指不出是哪种不一致 | TC-6.10 | **中** | 移植 Codex `apply-patch` 的 `seek_sequence` 策略:定位分四档升级(精确 → 忽略行尾空白 → 完全 trim → Unicode 标点折叠),但**升级 ≠ 猜测**,加两条护栏 —— ①**折标点那一档只作用于文件自己指认的位置**:`@@` 行号若能折出匹配就用它,否则全文件唯一匹配才接受,否则**拒绝**;②**context 行写回文件自己的那一行**,不是 patch 里的副本,否则空白有损的 patch 会顺手改掉它没打算改的行。另:多 hunk 的 offset 改由 **ops 实际增删行数**推出,不再取 `@@` 头部计数(模型数错头会带偏后面每个 hunk)。<br>档位顺序有意义:折标点**不能**提前,否则会误拒「忽略尾空白即可唯一确定」的 patch |
 
@@ -2135,7 +2157,7 @@ EOF
 - **预期结果（应当）**：全程 `untrusted`
 - **⚠️ 实测当前**：baseline `untrusted` → after **`trusted`** —— 明确的拒绝裁决被反转。
 - **加重情节**：`registry.py:80` 读的正是这个被污染的同一个快照，
-  所以**运行时提示词装配继承该结果**，不只是 CLI 显示问题。
+  所以**runtime 提示词装配继承该结果**，不只是 CLI 显示问题。
 
 ### TC-17.3 forget 不得连带降级无关技能 — P1
 
@@ -2538,7 +2560,7 @@ workspace / evolution / llm），以及"声明了却没人读"的字段。共 4 
 
 ### E.1 沙箱执行不可信代码时泄漏全部环境变量 — 高
 
-`GitWorktreeSandbox.run_code` 是运行时**唯一**执行不可信代码的地方（模型生成、可被
+`GitWorktreeSandbox.run_code` 是 runtime**唯一**执行不可信代码的地方（模型生成、可被
 抓取的 skill 或仓库内容影响）。它经 `run_capture` 启动子进程，而 `run_capture` 在
 `env=None` 时让子进程**继承父环境**——调用点没传 `env=`。
 
@@ -2548,7 +2570,7 @@ workspace / evolution / llm），以及"声明了却没人读"的字段。共 4 
 git 助手走 `git_env`。只有这条最容易出事的路漏了。
 
 修复：传 `SecretBroker().child_env(base_env=os.environ)`。新增
-`test_sandbox_execution_env.py`（3 条），其中一个断言 PATH 仍在（别把运行时也剥没了）。
+`test_sandbox_execution_env.py`（3 条），其中一个断言 PATH 仍在（别把 runtime 也剥没了）。
 
 ### E.2 `DelegationScope.narrow` 会**放宽**权限 — 高（潜伏）
 
