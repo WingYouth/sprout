@@ -11,8 +11,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from Sprout.cli.commands import mcp as mcp_command
 from Sprout.mcp.adapter.tool import MCPTool, MCPToolAdapter, _content_to_text
-from Sprout.mcp.server.server import build_server, server_definitions
+from Sprout.mcp.server import server as server_module
+from Sprout.mcp.server.server import build_server, create_default_server, server_definitions
 from Sprout.tests.conftest import build_runtime
 
 
@@ -154,3 +156,43 @@ def test_build_server_assembles_around_runtime() -> None:
     runtime, _ = build_runtime()
     server = build_server(runtime)
     assert server is not None
+
+
+def test_default_server_defers_runtime_creation(monkeypatch) -> None:
+    def fail_load_settings() -> None:
+        raise AssertionError("settings should load lazily")
+
+    monkeypatch.setattr(server_module, "load_settings", fail_load_settings)
+
+    assert create_default_server() is not None
+
+
+def test_stdio_entrypoint_starts_without_bootstrap(monkeypatch) -> None:
+    """MCP clients must be able to initialize before Temporal/storage checks."""
+    calls: dict[str, str] = {}
+
+    class FakeServer:
+        def run(self, *, transport: str) -> None:
+            calls["transport"] = transport
+
+    monkeypatch.setattr(server_module, "create_default_server", lambda: FakeServer())
+
+    server_module.main()
+
+    assert calls == {"transport": "stdio"}
+
+
+def test_mcp_connection_hint_is_english(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    hint = mcp_command._connection_hint()
+
+    assert "SEAM Sprout MCP server is ready on stdio." in hint
+    assert "Add this server to your MCP client configuration:" in hint
+    assert '"command": "uv"' in hint
+    assert '"args": ["run", "sprout", "mcp", "serve"]' in hint
+    assert f'"cwd": "{tmp_path.as_posix()}"' in hint
+    assert "Then restart or reload your MCP client." in hint
+    assert "not an HTTP server" in hint
+    assert "Use `uv run sprout mcp inspect`" in hint
+    assert "连接" not in hint

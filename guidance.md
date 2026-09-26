@@ -2,12 +2,17 @@
 
 This document describes the development workflow for contributors, and doubles
 as a condensed map of the repository structure, code logic, and local-only
-design docs. The main README files (`README.md` and `README_CN.md`) describe
-what the project is and how to run it; this file describes how to change it
-safely and where to look before you do.
+design docs. The main README files describe what the project is and how to run
+it; the root `SKILL.md` packages the same project context for other agents.
+This file describes how to change the project safely and where to look before
+you do.
 
 ## 1. Core Principles
 
+- Treat SEAM Sprout as an embedded **AI Engineering Runtime**, not a chat
+  wrapper. Product-facing copy should explain how Sprout moves project intent
+  through context, planning, sandboxed edits, verification, approval,
+  integration, and traceability.
 - Keep the runtime, storage, and evolution boundaries described in the README
   architecture section.
 - Add domain logic in the package that owns it. Do not force unrelated
@@ -26,11 +31,36 @@ safely and where to look before you do.
   authority/lane boundary, update `EVENT_LANES` so the event routes to the
   owning layer.
 
+## Product and Documentation Positioning
+
+Use this frame consistently in README copy, CLI help, Web copy, prompts, and
+agent-facing project context:
+
+- Sprout solves the gap between "the model gave me an answer" and "the project
+  has a trustworthy change."
+- AI-generated code should not jump directly from a model response into the
+  project. It should pass through project context, risk controls, verification,
+  human review, and audit.
+- The runtime is the central authority. CLI, Web, MCP, gateway, remote, and
+  Python API surfaces converge on `create_runtime()`.
+- Git worktree sandboxing isolates change visibility, not OS privileges.
+  Sprout does not provide container, VM, or OS-level isolation.
+- Prefer precise project terms over loose assistant language: `runtime`,
+  `sandbox`, `broker`, `gateway`, `proposal`, `approval`, `audit`, `MCP`, and
+  `storage schema`.
+
+The root `SKILL.md` is the portable project-context skill for other agents. Keep
+it aligned with `README.md` and this guidance file when changing product
+positioning, architecture boundaries, safety boundaries, CLI/MCP rules, or the
+definition of done. It should stay self-contained and concise enough to copy to
+another agent environment.
+
 ## 2. Development Workflow
 
 1. **Understand the current shape.**
-   Read `README.md`, this guidance file, and the relevant package under
-   `src/Sprout/` before changing behavior. Section 7 gives the one-page map.
+   Read `README.md`, root `SKILL.md`, this guidance file, and the relevant
+   package under `src/Sprout/` before changing behavior. Section 7 gives the
+   one-page map.
 
 2. **Place the feature in the right module.**
    For example, storage behavior belongs in `storage/`, agent behavior in
@@ -77,8 +107,10 @@ safely and where to look before you do.
    MCP exposure rules below.
 
 8. **Update documentation.**
-   Update `README.md`, `README_CN.md`, and this guidance file when the feature
-   changes the public surface, configuration, workflow, or development rules.
+   Update `README.md`, root `SKILL.md`, and this guidance file when the feature
+   changes the public surface, configuration, workflow, product positioning,
+   safety boundary, or development rules. Update localized README files when the
+   user-facing product story or setup instructions materially change.
 
 9. **Run the full verification loop.**
    ```powershell
@@ -151,6 +183,18 @@ The MCP server should expose read-only and low-risk operations such as:
 - listing skills;
 - searching knowledge.
 
+### Stdio startup
+
+`sprout mcp serve` is a protocol endpoint, not a general boot command. Its
+stdout must be reserved for MCP JSON-RPC frames from the first byte. Do not run
+Temporal checks, Docker startup, storage schema initialization, or other
+bootstrap work before `server.run(transport="stdio")`.
+
+Build the MCP surface protocol-first: register tools, resources, and prompts
+without touching writable storage. Assemble the runtime lazily at the first
+operation that truly needs it, and let that operation report any service or
+storage failure in-band.
+
 ### Do not expose through MCP
 
 High-risk or privileged operations remain in the CLI/Web entry points:
@@ -183,8 +227,8 @@ A feature is complete when all applicable items are true:
   help text, purple-styled output, and a scriptable mode where useful.
 - The feature is available through MCP if it belongs on the safe public surface,
   or is intentionally excluded because it is high-risk.
-- README and this guidance document reflect the new workflow and public
-  commands.
+- README, root `SKILL.md`, and this guidance document reflect the new workflow,
+  product positioning, safety boundary, and public commands where applicable.
 - `uv run ruff check .` and `uv run pytest` pass.
 
 ## 6. Worked Example: Adding a New Read-Only Inspection Command
@@ -199,7 +243,8 @@ Suppose the project adds an inspection command named `summary`.
 3. Register it in `src/Sprout/cli/app.py` with `app.command()(summary.summary)`.
 4. If the information is safe for model clients, add a read-only MCP tool or
    resource that returns the same summary.
-5. Update both README files and run the verification loop.
+5. Update README, root `SKILL.md` if the agent-facing project rules changed,
+   and run the verification loop.
 
 For a new state-changing operation, the same steps apply, but do not add it to
 the MCP server surface. Keep state changes in the CLI/Web entry points where
@@ -1252,4 +1297,3 @@ sources = ["catalog", "well-known"]
 - `test_skills_runtime_wiring.py` boots a real `Runtime`, so a change that
   registers tools or loads skills wrongly is caught without a CLI run.
 - The crawler is tested through an injected `fetch=`, never the network.
-
