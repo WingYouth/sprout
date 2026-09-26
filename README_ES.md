@@ -251,6 +251,7 @@ Todas las entradas usan `create_runtime()` como ruta única de ensamblaje.
 ```bash
 uv run sprout --help
 uv run sprout chat "hello"
+uv run sprout run --workspace /path/to/project "fix the failing tests"
 uv run sprout serve
 uv run sprout stop serve
 
@@ -275,6 +276,14 @@ uv run sprout mcp serve
 uv run sprout audit tail
 uv run sprout audit verify
 uv run sprout security check
+```
+
+Cuando Sprout se lanza desde npm, `npx`, una tarea de IDE o un proceso en
+background, no dependas del current directory del proceso. Pasa la raíz del
+proyecto explícitamente:
+
+```bash
+nohup uv run sprout run --workspace "$PWD" "your task" > sprout-run.log 2>&1 &
 ```
 
 ## Storage

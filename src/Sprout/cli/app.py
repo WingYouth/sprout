@@ -35,9 +35,9 @@ from Sprout.cli.ui import text as ui_text
 _QUICK_EXAMPLES = [
     ("sprout", "启动交互式对话", "Start interactive chat"),
     (
-        "sprout run \"修复这个 bug\"",
-        "当前项目内自动扫描、规划、编码、验证并整合",
-        "Run scan, strategy, coding, validation and integration in this project",
+        "sprout run --workspace . \"修复这个 bug\"",
+        "指定项目目录后自动扫描、规划、编码、验证并整合",
+        "Run scan, strategy, coding, validation and integration for a workspace",
     ),
     ("sprout chat \"hello\"", "发送一次性消息", "Send a one-shot message"),
     ("uv run sprout info", "显示版本与生效配置", "Show version and effective settings"),

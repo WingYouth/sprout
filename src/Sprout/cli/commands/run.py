@@ -1,4 +1,4 @@
-"""``sprout run``: autonomous, looping project automation from the current directory."""
+"""``sprout run``: autonomous, looping project automation for one workspace."""
 
 from __future__ import annotations
 
@@ -369,11 +369,12 @@ def run(
     path: Annotated[
         Path,
         typer.Option(
+            "--workspace",
             "--path",
             "-C",
             help=_L(
-                "要操作的项目根目录，默认当前目录。",
-                "Project root to operate on. Defaults to the current directory.",
+                "要操作的项目根目录；npm/后台启动时请显式传入。",
+                "Project root to operate on; pass it explicitly from npm/background launchers.",
             ),
         ),
     ] = Path("."),

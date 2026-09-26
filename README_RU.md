@@ -251,6 +251,7 @@ asyncio.run(main())
 ```bash
 uv run sprout --help
 uv run sprout chat "hello"
+uv run sprout run --workspace /path/to/project "fix the failing tests"
 uv run sprout serve
 uv run sprout stop serve
 
@@ -275,6 +276,13 @@ uv run sprout mcp serve
 uv run sprout audit tail
 uv run sprout audit verify
 uv run sprout security check
+```
+
+Когда Sprout запускается из npm, `npx`, IDE task или background process, не
+полагайтесь на process current directory. Передавайте корень проекта явно:
+
+```bash
+nohup uv run sprout run --workspace "$PWD" "your task" > sprout-run.log 2>&1 &
 ```
 
 ## Storage

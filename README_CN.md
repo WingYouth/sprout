@@ -251,6 +251,7 @@ asyncio.run(main())
 ```bash
 uv run sprout --help
 uv run sprout chat "hello"
+uv run sprout run --workspace /path/to/project "fix the failing tests"
 uv run sprout serve
 uv run sprout stop serve
 
@@ -275,6 +276,12 @@ uv run sprout mcp serve
 uv run sprout audit tail
 uv run sprout audit verify
 uv run sprout security check
+```
+
+从 npm、`npx`、IDE task 或后台进程启动 Sprout 时，不要依赖进程当前目录。请显式传入项目根目录：
+
+```bash
+nohup uv run sprout run --workspace "$PWD" "your task" > sprout-run.log 2>&1 &
 ```
 
 ## Storage

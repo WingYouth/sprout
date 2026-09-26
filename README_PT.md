@@ -251,6 +251,7 @@ Todas as entradas usam `create_runtime()` como caminho único de montagem.
 ```bash
 uv run sprout --help
 uv run sprout chat "hello"
+uv run sprout run --workspace /path/to/project "fix the failing tests"
 uv run sprout serve
 uv run sprout stop serve
 
@@ -275,6 +276,14 @@ uv run sprout mcp serve
 uv run sprout audit tail
 uv run sprout audit verify
 uv run sprout security check
+```
+
+Quando Sprout for iniciado por npm, `npx`, uma tarefa de IDE ou um processo em
+background, não dependa do current directory do processo. Passe a raiz do
+projeto explicitamente:
+
+```bash
+nohup uv run sprout run --workspace "$PWD" "your task" > sprout-run.log 2>&1 &
 ```
 
 ## Storage

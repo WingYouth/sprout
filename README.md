@@ -261,6 +261,7 @@ All entry points use `create_runtime()` as the single assembly path.
 ```bash
 uv run sprout --help
 uv run sprout chat "hello"
+uv run sprout run --workspace /path/to/project "fix the failing tests"
 uv run sprout serve
 uv run sprout stop serve
 
@@ -285,6 +286,13 @@ uv run sprout mcp serve
 uv run sprout audit tail
 uv run sprout audit verify
 uv run sprout security check
+```
+
+When Sprout is launched from npm, `npx`, an IDE task, or a background process,
+do not rely on the process current directory. Pass the project root explicitly:
+
+```bash
+nohup uv run sprout run --workspace "$PWD" "your task" > sprout-run.log 2>&1 &
 ```
 
 ## Storage

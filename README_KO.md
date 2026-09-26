@@ -251,6 +251,7 @@ asyncio.run(main())
 ```bash
 uv run sprout --help
 uv run sprout chat "hello"
+uv run sprout run --workspace /path/to/project "fix the failing tests"
 uv run sprout serve
 uv run sprout stop serve
 
@@ -275,6 +276,13 @@ uv run sprout mcp serve
 uv run sprout audit tail
 uv run sprout audit verify
 uv run sprout security check
+```
+
+npm, `npx`, IDE task, background process에서 Sprout를 시작할 때는 process current
+directory에 의존하지 마세요. 프로젝트 root를 명시적으로 전달하세요:
+
+```bash
+nohup uv run sprout run --workspace "$PWD" "your task" > sprout-run.log 2>&1 &
 ```
 
 ## Storage
